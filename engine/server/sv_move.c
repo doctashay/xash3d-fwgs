@@ -22,6 +22,47 @@ GNU General Public License for more details.
 #define MOVE_NORMAL		0	// normal move in the direction monster is facing
 #define MOVE_STRAFE		1	// moves in direction specified, no matter which way monster is facing
 
+static CVAR_DEFINE_AUTO( sv_trace_ground_debug, "0", 0, "trace MOVETYPE_STEP and monster ground checks for debugging" );
+
+static qboolean SV_ShouldDebugGroundEntity( const edict_t *ent )
+{
+	if( !ent || Cvar_VariableValue( "sv_trace_ground_debug" ) <= 0.0f )
+		return false;
+
+	if( ent->v.movetype == MOVETYPE_STEP )
+		return true;
+
+	if( FBitSet( ent->v.flags, FL_MONSTER ))
+		return true;
+
+	return false;
+}
+
+static void SV_LogGroundTrace( const edict_t *ent, const char *stage, const vec3_t start, const vec3_t stop, const trace_t *trace )
+{
+	if( !SV_ShouldDebugGroundEntity( ent ))
+		return;
+
+	Con_Reportf( "grounddbg %s ent=%d class=%s movetype=%d flags=0x%x org=(%.3f %.3f %.3f) mins=(%.3f %.3f %.3f) maxs=(%.3f %.3f %.3f) start=(%.3f %.3f %.3f) stop=(%.3f %.3f %.3f) frac=%.3f startsolid=%d allsolid=%d end=(%.3f %.3f %.3f) enthit=%d\n",
+		stage,
+		NUM_FOR_EDICT( ent ),
+		SV_ClassName((edict_t *)ent ),
+		ent->v.movetype,
+		ent->v.flags,
+		ent->v.origin[0], ent->v.origin[1], ent->v.origin[2],
+		ent->v.mins[0], ent->v.mins[1], ent->v.mins[2],
+		ent->v.maxs[0], ent->v.maxs[1], ent->v.maxs[2],
+		start[0], start[1], start[2],
+		stop[0], stop[1], stop[2],
+		trace ? trace->fraction : -1.0f,
+		trace ? trace->startsolid : 0,
+		trace ? trace->allsolid : 0,
+		trace ? trace->endpos[0] : 0.0f,
+		trace ? trace->endpos[1] : 0.0f,
+		trace ? trace->endpos[2] : 0.0f,
+		( trace && trace->ent ) ? NUM_FOR_EDICT( trace->ent ) : -1 );
+}
+
 /*
 =============
 SV_CheckBottom
@@ -57,7 +98,15 @@ qboolean SV_CheckBottom( edict_t *ent, int iMode )
 			svs.groupmask = ent->v.groupinfo;
 
 			if( SV_PointContents( start ) != CONTENTS_SOLID )
+			{
+				if( SV_ShouldDebugGroundEntity( ent ))
+				{
+					Con_Reportf( "grounddbg corner-nonsolid ent=%d class=%s movetype=%d point=(%.3f %.3f %.3f) contents=%d\n",
+						NUM_FOR_EDICT( ent ), SV_ClassName( ent ), ent->v.movetype,
+						start[0], start[1], start[2], SV_PointContents( start ));
+				}
 				goto realcheck;
+			}
 		}
 	}
 	return true; // we got out easy
@@ -78,7 +127,10 @@ realcheck:
 	else trace = SV_Move( start, vec3_origin, vec3_origin, stop, MOVE_NOMONSTERS, ent, monsterClip );
 
 	if( trace.fraction == 1.0f )
+	{
+		SV_LogGroundTrace( ent, "midpoint-miss", start, stop, &trace );
 		return false;
+	}
 
 	mid = bottom = trace.endpos[2];
 
@@ -97,7 +149,10 @@ realcheck:
 			if( trace.fraction != 1.0f && trace.endpos[2] > bottom )
 				bottom = trace.endpos[2];
 			if( trace.fraction == 1.0f || mid - trace.endpos[2] > sv_stepsize.value )
+			{
+				SV_LogGroundTrace( ent, "corner-fail", start, stop, &trace );
 				return false;
+			}
 		}
 	}
 	return true;

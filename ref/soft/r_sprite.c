@@ -150,7 +150,7 @@ void Mod_LoadSpriteModel( model_t *mod, const void *buffer, qboolean *loaded, ui
 
 	pin = buffer;
 	psprite = mod->cache.data;
-	sprite_version = LittleLong( pin->version );
+	sprite_version = pin->version;
 
 	if( sprite_version == SPRITE_VERSION_Q1 || sprite_version == SPRITE_VERSION_32 )
 		numi = NULL;

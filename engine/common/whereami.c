@@ -18,7 +18,6 @@ extern "C" {
 #elif defined(__APPLE__)
 #undef _DARWIN_C_SOURCE
 #define _DARWIN_C_SOURCE
-#define _DARWIN_BETTER_REALPATH
 #endif
 
 #if !defined(WAI_MALLOC) || !defined(WAI_FREE) || !defined(WAI_REALLOC)
@@ -392,6 +391,24 @@ int WAI_PREFIX(getModulePath)(char* out, int capacity, int* dirname_length)
 #include <string.h>
 #include <dlfcn.h>
 #include <stdbool.h>
+
+typedef char* (*WAI_PREFIX(realpath_fn_))(const char*, char*);
+
+static char* WAI_PREFIX(realpath_compat_)(const char* path, char* resolved)
+{
+  static WAI_PREFIX(realpath_fn_) fn = NULL;
+  static bool looked_up = false;
+
+  if (!looked_up)
+  {
+    fn = (WAI_PREFIX(realpath_fn_))dlsym(RTLD_DEFAULT, "realpath");
+    looked_up = true;
+  }
+
+  return fn ? fn(path, resolved) : NULL;
+}
+
+#define realpath WAI_PREFIX(realpath_compat_)
 
 WAI_FUNCSPEC
 int WAI_PREFIX(getExecutablePath)(char* out, int capacity, int* dirname_length)

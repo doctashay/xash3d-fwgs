@@ -451,6 +451,10 @@ static int VID_GetDisplayIndex( const char *caller, SDL_Window *window )
 
 static void VID_SetWindowIcon( SDL_Window *hWnd )
 {
+#if defined(__APPLE__)
+	(void)hWnd;
+	return;
+#else
 	char iconpath[MAX_STRING];
 
 	Q_strncpy( iconpath, GI->iconpath, sizeof( iconpath ));
@@ -498,6 +502,7 @@ static void VID_SetWindowIcon( SDL_Window *hWnd )
 	}
 
 	WIN_SetWindowIcon( LoadIcon( GetModuleHandle( NULL ), MAKEINTRESOURCE( 101 )));
+#endif
 #endif
 }
 

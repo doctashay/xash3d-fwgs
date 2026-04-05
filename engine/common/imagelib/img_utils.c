@@ -635,7 +635,7 @@ qboolean Image_Copy8bitRGBA( const byte *in, byte *out, int pixels )
 	// this is a base image with luma - clear luma pixels
 	if( image.flags & IMAGE_HAS_LUMA )
 	{
-		for( i = 0; i < image.width * image.height; i++ )
+		for( i = 0; i < pixels; i++ )
 			fin[i] = fin[i] < 224 ? fin[i] : image.black_pixel;
 	}
 

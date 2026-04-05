@@ -228,17 +228,9 @@ void VID_RestoreScreenResolution( void )
 
 static qboolean VID_CreateWindowWithSafeGL( const char *wndname, int xpos, int ypos, int w, int h, uint32_t flags )
 {
-	int bpp = 16;
-
-#if XASH_APPLE
-	// Quartz SDL 1.2: fixed 16bpp GL modes often fail NSWindow creation (CGSWindow error 1002).
-	if( flags & SDL_OPENGL )
-		bpp = 0;
-#endif
-
 	while( glw_state.safe >= SAFE_NO && glw_state.safe < SAFE_LAST )
 	{
-		host.hWnd = sw.surf = SDL_SetVideoMode( w, h, bpp, flags );
+		host.hWnd = sw.surf = SDL_SetVideoMode( w, h, 16, flags );
 		// we have window, exit loop
 		if( host.hWnd )
 			break;
@@ -293,13 +285,7 @@ qboolean VID_CreateWindow( int width, int height, window_mode_t window_mode )
 	Q_strncpy( wndname, GI->title, sizeof( wndname ));
 
 	if( window_mode != WINDOW_MODE_WINDOWED )
-	{
-		SetBits( flags, SDL_FULLSCREEN );
-#if !XASH_APPLE
-		// SDL docs: do not combine SDL_HWSURFACE with SDL_FULLSCREEN on macOS Quartz.
-		SetBits( flags, SDL_HWSURFACE );
-#endif
-	}
+		SetBits( flags, SDL_FULLSCREEN|SDL_HWSURFACE );
 
 	if( !glw_state.software )
 		SetBits( flags, SDL_OPENGL );
@@ -339,18 +325,7 @@ static void GL_SetupAttributes( void )
 
 void GL_SwapBuffers( void )
 {
-	SDL_Surface *wnd = (SDL_Surface *)host.hWnd;
-
-	if( !wnd )
-		return;
-
-	// SDL 1.2: SDL_Flip() does not swap the OpenGL framebuffer. With SDL_OPENGL,
-	// Flip falls through to SDL_UpdateRect, which refuses to update — the front
-	// buffer never advances (blank / white window on macOS Quartz and others).
-	if( wnd->flags & SDL_OPENGL )
-		SDL_GL_SwapBuffers();
-	else
-		SDL_Flip( wnd );
+	SDL_Flip( host.hWnd );
 }
 
 int GL_SetAttribute( int attr, int val )
@@ -405,9 +380,7 @@ qboolean R_Init_Video( ref_graphic_apis_t type )
 	string safe;
 	qboolean retval;
 
-	// GL_SetupAttributes runs before the window exists; assume true color so we
-	// request 8bpc channels (see gl_opengl GL_SetupAttributes). Software still defaults 16.
-	refState.desktopBitsPixel = ( type == REF_GL ) ? 32 : 16;
+	refState.desktopBitsPixel = 16;
 
 	switch( type )
 	{
@@ -435,30 +408,6 @@ qboolean R_Init_Video( ref_graphic_apis_t type )
 	if( !(retval = VID_SetMode()) )
 	{
 		return retval;
-	}
-
-	// Do not hardcode 16bpp: GL_SetTextureFormat uses this to pick GL_RGBA4/GL_RGB5 etc.
-	// Wrong depth breaks mainui additive text and can corrupt uploads on macOS GL.
-	if( type == REF_GL && host.hWnd )
-	{
-		int red = 0, green = 0, blue = 0;
-
-		if( SDL_GL_GetAttribute( SDL_GL_RED_SIZE, &red ) == 0 &&
-			SDL_GL_GetAttribute( SDL_GL_GREEN_SIZE, &green ) == 0 &&
-			SDL_GL_GetAttribute( SDL_GL_BLUE_SIZE, &blue ) == 0 &&
-			( red + green + blue ) > 0 )
-		{
-			refState.desktopBitsPixel = red + green + blue;
-		}
-		else
-		{
-			const SDL_VideoInfo *vi = SDL_GetVideoInfo();
-
-			if( vi && vi->vfmt && vi->vfmt->BitsPerPixel >= 16 )
-				refState.desktopBitsPixel = vi->vfmt->BitsPerPixel;
-			else
-				refState.desktopBitsPixel = 32;
-		}
 	}
 
 	switch( type )
@@ -596,7 +545,5 @@ void VID_Info_f( void )
 	Con_Printf( "Window mode: " S_GREEN "%s" S_DEFAULT "\n", mode );
 
 	if( vi )
-	{
 		Con_Printf( "Desktop: " S_GREEN "%dbpp" S_DEFAULT "\n", vi->vfmt ? vi->vfmt->BitsPerPixel : 0 );
-	}
 }

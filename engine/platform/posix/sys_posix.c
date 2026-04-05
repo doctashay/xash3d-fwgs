@@ -130,4 +130,3 @@ void Platform_Sleep( int msec )
 	usleep( msec * 1000 );
 }
 #endif // XASH_TIMER == TIMER_POSIX
-

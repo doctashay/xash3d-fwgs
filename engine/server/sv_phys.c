@@ -1685,6 +1685,17 @@ static void SV_Physics_Step( edict_t *ent )
 			}
 		}
 
+		if( Cvar_VariableValue( "sv_trace_ground_debug" ) > 0.0f &&
+			ent->v.movetype == MOVETYPE_STEP &&
+			wasonground && !FBitSet( ent->v.flags, FL_ONGROUND ))
+		{
+			Con_Reportf( "grounddbg lost-ground ent=%d class=%s org=(%.3f %.3f %.3f) vel=(%.3f %.3f %.3f) basevel=(%.3f %.3f %.3f)\n",
+				NUM_FOR_EDICT( ent ), SV_ClassName( ent ),
+				ent->v.origin[0], ent->v.origin[1], ent->v.origin[2],
+				ent->v.velocity[0], ent->v.velocity[1], ent->v.velocity[2],
+				ent->v.basevelocity[0], ent->v.basevelocity[1], ent->v.basevelocity[2] );
+		}
+
 		SV_LinkEdict( ent, true );
 	}
 	else

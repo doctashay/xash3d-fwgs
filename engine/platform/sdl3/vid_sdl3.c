@@ -39,6 +39,10 @@ static void GL_SetupAttributes( ref_safegl_context_t safegl )
 
 static void VID_SetWindowIcon( SDL_Window *hWnd )
 {
+#if defined(__APPLE__)
+	(void)hWnd;
+	return;
+#else
 	char iconpath[MAX_STRING];
 
 	Q_strncpy( iconpath, GI->iconpath, sizeof( iconpath ));
@@ -63,6 +67,7 @@ static void VID_SetWindowIcon( SDL_Window *hWnd )
 		Con_PrintSDLError( "SDL_SetWindowIcon" );
 
 	SDL_DestroySurface( surface );
+#endif
 }
 
 static SDL_Window *VID_CreateWindowWithSafeGL( const char *title, SDL_Rect *rect, Uint32 flags )

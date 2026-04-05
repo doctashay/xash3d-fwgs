@@ -45,11 +45,17 @@ void GAME_EXPORT Platform_GetMousePos( int *x, int *y )
 {
 	SDL_GetMouseState( x, y );
 
-	if( x )
-		*x *= refState.scale_x;
+	if( x && window_width.value && window_width.value != refState.width )
+	{
+		const float factor = refState.width / window_width.value;
+		*x = (int)( *x * factor );
+	}
 
-	if( y )
-		*y *= refState.scale_y;
+	if( y && window_height.value && window_height.value != refState.height )
+	{
+		const float factor = refState.height / window_height.value;
+		*y = (int)( *y * factor );
+	}
 }
 
 /*

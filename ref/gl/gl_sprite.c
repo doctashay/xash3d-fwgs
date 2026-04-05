@@ -65,7 +65,7 @@ static const byte *R_SpriteLoadFrame( model_t *mod, const void *pin, mspritefram
 	if( FBitSet( mod->flags, MODEL_CLIENT )) // it's a HUD sprite
 	{
 		Q_snprintf( texname, sizeof( texname ), "#HUD/%s(%s:%i%i).spr", sprite_name, group_suffix, num / 10, num % 10 );
-		gl_texturenum = GL_LoadTexture( texname, pin, pinframe.width * pinframe.height * bytes, r_texFlags );
+		gl_texturenum = GL_LoadTexture( texname, pin, sizeof( dspriteframe_t ) + pinframe.width * pinframe.height * bytes, r_texFlags );
 	}
 	else
 	{
@@ -82,7 +82,7 @@ static const byte *R_SpriteLoadFrame( model_t *mod, const void *pin, mspritefram
 		if( gl_texturenum == 0 )
 		{
 			Q_snprintf( texname, sizeof( texname ), "#%s(%s:%i%i).spr", sprite_name, group_suffix, num / 10, num % 10 );
-			gl_texturenum = GL_LoadTexture( texname, pin, pinframe.width * pinframe.height * bytes, r_texFlags );
+			gl_texturenum = GL_LoadTexture( texname, pin, sizeof( dspriteframe_t ) + pinframe.width * pinframe.height * bytes, r_texFlags );
 		}
 	}
 
@@ -165,7 +165,7 @@ void Mod_LoadSpriteModel( model_t *mod, const void *buffer, qboolean *loaded, ui
 
 	pin = buffer;
 	psprite = mod->cache.data;
-	version = LittleLong( pin->version );
+	version = pin->version;
 
 	if( version == SPRITE_VERSION_Q1 || version == SPRITE_VERSION_32 )
 		numi = NULL;
