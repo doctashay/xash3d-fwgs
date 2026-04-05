@@ -759,6 +759,25 @@ static void R_BuildLightMap( const msurface_t *surf, byte *dest, int stride, qbo
 
 	memset( r_blocklights, 0, sizeof( uint ) * size * 3 );
 
+	// If static lightmap data is missing/corrupted for this surface, avoid blacking it out.
+	// This preserves visibility on problematic big-endian map loads.
+	if( !surf->samples )
+	{
+		for( t = 0; t < tmax; t++ )
+		{
+			int s;
+			for( s = 0; s < smax; s++ )
+			{
+				byte *dst = &dest[( t * stride ) + ( s * 4 )];
+				dst[0] = 255;
+				dst[1] = 255;
+				dst[2] = 255;
+				dst[3] = 255;
+			}
+		}
+		return;
+	}
+
 	// add all the lightmaps
 	for( map = 0; map < MAXLIGHTMAPS && surf->samples; map++ )
 	{

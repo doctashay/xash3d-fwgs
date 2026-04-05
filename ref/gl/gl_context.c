@@ -135,7 +135,10 @@ static void Mod_UnloadTextures( model_t *mod )
 		Mod_SpriteUnloadTextures( mod->cache.data );
 		break;
 	default:
-		Assert( 0 );
+		// During Host_Error shutdown, partially initialized/corrupted models may be freed.
+		// Avoid recursive Host_Error/Assert loops in teardown.
+		gEngfuncs.Con_DPrintf( S_WARN "%s: skipping unload for unknown model type %d (%s)\n",
+			__func__, mod->type, mod->name );
 		break;
 	}
 }
