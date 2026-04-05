@@ -433,6 +433,8 @@ void *R_StudioGetAnim( studiohdr_t *m_pStudioHeader, model_t *m_pSubModel, mstud
 	if( !Mod_CacheCheck(( cache_user_t *)&( paSequences[pseqdesc->seqgroup] )))
 	{
 		string	filepath, modelname, modelpath;
+		mstudioanim_t *panim;
+		mstudioseqdesc_t *pseqdesc2 = (mstudioseqdesc_t *)((byte *)m_pStudioHeader + m_pStudioHeader->seqindex);
 
 		COM_FileBase( m_pSubModel->name, modelname, sizeof( modelname ));
 		COM_ExtractFilePath( m_pSubModel->name, modelpath );
@@ -442,9 +444,27 @@ void *R_StudioGetAnim( studiohdr_t *m_pStudioHeader, model_t *m_pSubModel, mstud
 
 		buf = FS_LoadFile( filepath, &filesize, false );
 		if( !buf || !filesize ) Host_Error( "%s: can't load %s\n", __func__, filepath );
-		if( IDSEQGRPHEADER != *(uint *)buf ) Host_Error( "%s: %s is corrupted\n", __func__, filepath );
+		if( IDSEQGRPHEADER != LittleLong( *(uint *)buf )) Host_Error( "%s: %s is corrupted\n", __func__, filepath );
 
 		Con_Printf( "loading: %s\n", filepath );
+
+		// all anim offsets in this seqgroup must be swapped for big-endian hosts
+		for( int i = 0; i < m_pStudioHeader->numseq; i++ )
+		{
+			if( pseqdesc2[i].seqgroup == pseqdesc->seqgroup )
+			{
+				panim = (mstudioanim_t *)(buf + pseqdesc2[i].animindex);
+				for( int j = 0; j < pseqdesc2[i].numblends; j++ )
+				{
+					for( int k = 0; k < m_pStudioHeader->numbones; k++ )
+					{
+						for( int l = 0; l < 6; l++ )
+							LittleShortSW( panim->offset[l] );
+						panim++;
+					}
+				}
+			}
+		}
 
 		paSequences[pseqdesc->seqgroup].data = Mem_Calloc( com_studiocache, filesize );
 		memcpy( paSequences[pseqdesc->seqgroup].data, buf, filesize );
@@ -830,11 +850,269 @@ static studiohdr_t *R_StudioLoadHeader( model_t *mod, const void *buffer )
 	byte		*pin;
 	studiohdr_t	*phdr;
 	int		i;
+	mstudiobone_t *pbones;
+	mstudiobonecontroller_t *pbonecontroller;
+	mstudiobbox_t *phitbox;
+	mstudioseqdesc_t *pseqdesc;
+	mstudiotexture_t *ptexture;
+	short *pskinref;
+	mstudiobodyparts_t *pbodypart;
+	mstudioattachment_t	*pattachments;
+	mstudiomodel_t	*m_pSubModel;
+	int		bodyCount = 0;
 
 	if( !buffer ) return NULL;
 
 	pin = (byte *)buffer;
 	phdr = (studiohdr_t *)pin;
+	LittleLongSW( phdr->ident );
+	LittleLongSW( phdr->version );
+	LittleLongSW( phdr->length );
+	phdr->eyeposition[0] = LittleFloat( phdr->eyeposition[0] );
+	phdr->eyeposition[1] = LittleFloat( phdr->eyeposition[1] );
+	phdr->eyeposition[2] = LittleFloat( phdr->eyeposition[2] );
+	phdr->min[0] = LittleFloat( phdr->min[0] );
+	phdr->min[1] = LittleFloat( phdr->min[1] );
+	phdr->min[2] = LittleFloat( phdr->min[2] );
+	phdr->max[0] = LittleFloat( phdr->max[0] );
+	phdr->max[1] = LittleFloat( phdr->max[1] );
+	phdr->max[2] = LittleFloat( phdr->max[2] );
+	phdr->bbmin[0] = LittleFloat( phdr->bbmin[0] );
+	phdr->bbmin[1] = LittleFloat( phdr->bbmin[1] );
+	phdr->bbmin[2] = LittleFloat( phdr->bbmin[2] );
+	phdr->bbmax[0] = LittleFloat( phdr->bbmax[0] );
+	phdr->bbmax[1] = LittleFloat( phdr->bbmax[1] );
+	phdr->bbmax[2] = LittleFloat( phdr->bbmax[2] );
+	LittleLongSW( phdr->flags );
+	LittleLongSW( phdr->numbones );
+	LittleLongSW( phdr->boneindex );
+	LittleLongSW( phdr->numbonecontrollers );
+	LittleLongSW( phdr->bonecontrollerindex );
+	LittleLongSW( phdr->numhitboxes );
+	LittleLongSW( phdr->hitboxindex );
+	LittleLongSW( phdr->numseq );
+	LittleLongSW( phdr->seqindex );
+	LittleLongSW( phdr->numseqgroups );
+	LittleLongSW( phdr->seqgroupindex );
+	LittleLongSW( phdr->numtextures );
+	LittleLongSW( phdr->textureindex );
+	LittleLongSW( phdr->texturedataindex );
+	LittleLongSW( phdr->numskinref );
+	LittleLongSW( phdr->numskinfamilies );
+	LittleLongSW( phdr->skinindex );
+	LittleLongSW( phdr->numbodyparts );
+	LittleLongSW( phdr->bodypartindex );
+	LittleLongSW( phdr->numattachments );
+	LittleLongSW( phdr->attachmentindex );
+	LittleLongSW( phdr->studiohdr2index );
+	LittleLongSW( phdr->unused );
+	LittleLongSW( phdr->unused2 );
+	LittleLongSW( phdr->unused3 );
+	LittleLongSW( phdr->numtransitions );
+	LittleLongSW( phdr->transitionindex );
+
+	pbones = (mstudiobone_t *)((byte *)phdr + phdr->boneindex);
+	pbonecontroller = (mstudiobonecontroller_t *)((byte *)phdr + phdr->bonecontrollerindex);
+	phitbox = (mstudiobbox_t *)((byte *)phdr + phdr->hitboxindex);
+	pseqdesc = (mstudioseqdesc_t *)((byte *)phdr + phdr->seqindex);
+	ptexture = (mstudiotexture_t *)((byte *)phdr + phdr->textureindex);
+	pbodypart = (mstudiobodyparts_t *)((byte *)phdr + phdr->bodypartindex);
+	pattachments = (mstudioattachment_t *)((byte *)phdr + phdr->attachmentindex);
+	m_pSubModel = (mstudiomodel_t *)(&pbodypart[phdr->numbodyparts]);
+
+	for( i = 0; i < phdr->numbones; i++ )
+	{
+		LittleLongSW( pbones[i].parent );
+		LittleLongSW( pbones[i].unused );
+		for( int j = 0; j < 6; j++ )
+		{
+			LittleLongSW( pbones[i].bonecontroller[j] );
+			pbones[i].value[j] = LittleFloat( pbones[i].value[j] );
+			pbones[i].scale[j] = LittleFloat( pbones[i].scale[j] );
+		}
+	}
+
+	for( i = 0; i < phdr->numbonecontrollers; i++ )
+	{
+		LittleLongSW( pbonecontroller[i].bone );
+		LittleLongSW( pbonecontroller[i].type );
+		pbonecontroller[i].start = LittleFloat( pbonecontroller[i].start );
+		pbonecontroller[i].end = LittleFloat( pbonecontroller[i].end );
+		LittleLongSW( pbonecontroller[i].unused );
+		LittleLongSW( pbonecontroller[i].index );
+	}
+
+	for( i = 0; i < phdr->numhitboxes; i++ )
+	{
+		LittleLongSW( phitbox[i].bone );
+		LittleLongSW( phitbox[i].group );
+		for( int j = 0; j < 3; j++ )
+		{
+			phitbox[i].bbmin[j] = LittleFloat( phitbox[i].bbmin[j] );
+			phitbox[i].bbmax[j] = LittleFloat( phitbox[i].bbmax[j] );
+		}
+	}
+
+	for( i = 0; i < phdr->numseq; i++ )
+	{
+		mstudioevent_t *pevent;
+		mstudioanim_t *panim;
+
+		pseqdesc[i].fps = LittleFloat( pseqdesc[i].fps );
+		LittleLongSW( pseqdesc[i].flags );
+		LittleLongSW( pseqdesc[i].activity );
+		LittleLongSW( pseqdesc[i].actweight );
+		LittleLongSW( pseqdesc[i].numevents );
+		LittleLongSW( pseqdesc[i].eventindex );
+		LittleLongSW( pseqdesc[i].numframes );
+		LittleLongSW( pseqdesc[i].weightlistindex );
+		LittleLongSW( pseqdesc[i].iklockindex );
+		LittleLongSW( pseqdesc[i].motiontype );
+		LittleLongSW( pseqdesc[i].motionbone );
+		LittleLongSW( pseqdesc[i].autolayerindex );
+		LittleLongSW( pseqdesc[i].keyvalueindex );
+		LittleLongSW( pseqdesc[i].numblends );
+		LittleLongSW( pseqdesc[i].animindex );
+		LittleLongSW( pseqdesc[i].seqgroup );
+		LittleLongSW( pseqdesc[i].entrynode );
+		LittleLongSW( pseqdesc[i].exitnode );
+		LittleLongSW( pseqdesc[i].animdescindex );
+
+		for( int j = 0; j < 3; j++ )
+		{
+			pseqdesc[i].linearmovement[j] = LittleFloat( pseqdesc[i].linearmovement[j] );
+			pseqdesc[i].bbmin[j] = LittleFloat( pseqdesc[i].bbmin[j] );
+			pseqdesc[i].bbmax[j] = LittleFloat( pseqdesc[i].bbmax[j] );
+		}
+
+		for( int j = 0; j < 2; j++ )
+		{
+			LittleLongSW( pseqdesc[i].blendtype[j] );
+			pseqdesc[i].blendstart[j] = LittleFloat( pseqdesc[i].blendstart[j] );
+			pseqdesc[i].blendend[j] = LittleFloat( pseqdesc[i].blendend[j] );
+		}
+
+		pevent = (mstudioevent_t *)((byte *)phdr + pseqdesc[i].eventindex);
+		for( int j = 0; j < pseqdesc[i].numevents; j++ )
+		{
+			LittleLongSW( pevent[j].frame );
+			LittleLongSW( pevent[j].event );
+			LittleLongSW( pevent[j].unused );
+		}
+
+		if( pseqdesc[i].seqgroup == 0 )
+		{
+			panim = (mstudioanim_t *)((byte *)phdr + pseqdesc[i].animindex);
+			for( int j = 0; j < pseqdesc[i].numblends; j++ )
+			{
+				for( int k = 0; k < phdr->numbones; k++ )
+				{
+					for( int l = 0; l < 6; l++ )
+						LittleShortSW( panim->offset[l] );
+					panim++;
+				}
+			}
+		}
+	}
+
+	for( i = 0; i < phdr->numtextures; i++ )
+	{
+		LittleLongSW( ptexture[i].flags );
+		LittleLongSW( ptexture[i].width );
+		LittleLongSW( ptexture[i].height );
+		LittleLongSW( ptexture[i].index );
+	}
+
+	pskinref = (short *)((byte *)phdr + phdr->skinindex);
+	for( i = 0; i < phdr->numskinfamilies; i++ )
+	{
+		for( int j = 0; j < phdr->numskinref; j++ )
+			LittleShortSW( pskinref[j] );
+		pskinref += phdr->numskinref;
+	}
+
+	for( i = 0; i < phdr->numbodyparts; i++ )
+	{
+		LittleLongSW( pbodypart[i].nummodels );
+		LittleLongSW( pbodypart[i].base );
+		LittleLongSW( pbodypart[i].modelindex );
+	}
+
+	for( i = 0; i < phdr->numbodyparts; i++ )
+		bodyCount += pbodypart[i].nummodels;
+
+	for( i = 0; i < bodyCount; i++ )
+	{
+		mstudiomesh_t *pmesh;
+		vec3_t *pverts;
+		vec3_t *pnorms;
+		short *ptricmds;
+
+		LittleLongSW( m_pSubModel[i].unused );
+		m_pSubModel[i].unused2 = LittleFloat( m_pSubModel[i].unused2 );
+		LittleLongSW( m_pSubModel[i].nummesh );
+		LittleLongSW( m_pSubModel[i].meshindex );
+		LittleLongSW( m_pSubModel[i].numverts );
+		LittleLongSW( m_pSubModel[i].vertinfoindex );
+		LittleLongSW( m_pSubModel[i].vertindex );
+		LittleLongSW( m_pSubModel[i].numnorms );
+		LittleLongSW( m_pSubModel[i].norminfoindex );
+		LittleLongSW( m_pSubModel[i].normindex );
+		LittleLongSW( m_pSubModel[i].blendvertinfoindex );
+		LittleLongSW( m_pSubModel[i].blendnorminfoindex );
+
+		pmesh = (mstudiomesh_t *)((byte *)phdr + m_pSubModel[i].meshindex);
+		pverts = (vec3_t *)((byte *)phdr + m_pSubModel[i].vertindex);
+		pnorms = (vec3_t *)((byte *)phdr + m_pSubModel[i].normindex);
+
+		for( int j = 0; j < m_pSubModel[i].nummesh; j++ )
+		{
+			int k = 0;
+			LittleLongSW( pmesh[j].numtris );
+			LittleLongSW( pmesh[j].triindex );
+			LittleLongSW( pmesh[j].skinref );
+			LittleLongSW( pmesh[j].numnorms );
+			LittleLongSW( pmesh[j].unused );
+
+			ptricmds = (short *)((byte *)phdr + pmesh[j].triindex);
+			while( true )
+			{
+				LittleShortSW( ptricmds[0] );
+				k = *( ptricmds++ );
+				if( !k ) break;
+				if( k < 0 ) k = -k;
+				for( ; k > 0; k--, ptricmds += 4 )
+				{
+					LittleShortSW( ptricmds[0] );
+					LittleShortSW( ptricmds[1] );
+					LittleShortSW( ptricmds[2] );
+					LittleShortSW( ptricmds[3] );
+				}
+			}
+		}
+
+		for( int j = 0; j < m_pSubModel[i].numverts; j++ )
+			for( int k = 0; k < 3; k++ )
+				pverts[j][k] = LittleFloat( pverts[j][k] );
+
+		for( int j = 0; j < m_pSubModel[i].numnorms; j++ )
+			for( int k = 0; k < 3; k++ )
+				pnorms[j][k] = LittleFloat( pnorms[j][k] );
+	}
+
+	for( i = 0; i < phdr->numattachments; i++ )
+	{
+		LittleLongSW( pattachments[i].flags );
+		LittleLongSW( pattachments[i].bone );
+		for( int j = 0; j < 3; j++ )
+		{
+			pattachments[i].org[j] = LittleFloat( pattachments[i].org[j] );
+			pattachments[i].vectors[0][j] = LittleFloat( pattachments[i].vectors[0][j] );
+			pattachments[i].vectors[1][j] = LittleFloat( pattachments[i].vectors[1][j] );
+			pattachments[i].vectors[2][j] = LittleFloat( pattachments[i].vectors[2][j] );
+		}
+	}
+
 	i = phdr->version;
 
 	if( i != STUDIO_VERSION )
