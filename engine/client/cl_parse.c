@@ -2309,7 +2309,16 @@ void CL_ParseUserMessage( sizebuf_t *msg, int svc_num, connprotocol_t proto )
 	{
 		if( proto == PROTO_GOLDSRC )
 			iSize = MSG_ReadByte( msg );
-		else iSize = MSG_ReadWord( msg );
+		else
+		{
+			iSize = MSG_ReadWord( msg );
+			if( iSize > MAX_USERMSG_LENGTH )
+			{
+				const int swapped = (( iSize & 0xFF ) << 8 ) | (( iSize >> 8 ) & 0xFF );
+				if( swapped >= 0 && swapped <= MAX_USERMSG_LENGTH )
+					iSize = swapped;
+			}
+		}
 	}
 
 	if( iSize >= MAX_USERMSG_LENGTH )

@@ -136,6 +136,17 @@ qboolean Con_LoadVariableWidthFont( const char *fontname, cl_font_t *font, float
 	memcpy( &src, pfile, sizeof( src ));
 	Mem_Free( pfile );
 
+	LittleLongSW( src.width );
+	LittleLongSW( src.height );
+	LittleLongSW( src.rowcount );
+	LittleLongSW( src.rowheight );
+
+	for( i = 0; i < NUM_GLYPHS; i++ )
+	{
+		LittleShortSW( src.fontinfo[i].startoffset );
+		LittleShortSW( src.fontinfo[i].charwidth );
+	}
+
 	font->hFontTexture = CL_LoadFontTexture( fontname, texFlags, &font_width );
 	if( !font->hFontTexture )
 		return false;
@@ -172,7 +183,7 @@ void CL_FreeFont( cl_font_t *font )
 
 static int CL_CalcTabStop( const cl_font_t *font, int x )
 {
-	int space = font->charWidths['0'];
+	int space = font->charWidths[' '];
 	int tab   = space * 6; // 6 spaces
 	int stop  = tab - x % tab;
 

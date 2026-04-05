@@ -53,6 +53,10 @@ static const byte *R_SpriteLoadFrame( model_t *mod, const void *pin, mspritefram
 	int		bytes = 1;
 
 	memcpy( &pinframe, pin, sizeof( dspriteframe_t ));
+	LittleLongSW( pinframe.width );
+	LittleLongSW( pinframe.height );
+	LittleLongSW( pinframe.origin[0] );
+	LittleLongSW( pinframe.origin[1] );
 
 	if( sprite_version == SPRITE_VERSION_32 )
 		bytes = 4;
@@ -113,7 +117,7 @@ static const byte *R_SpriteLoadGroup( model_t *mod, const void *pin, mspritefram
 	const void		*ptemp;
 
 	pingroup = (const dspritegroup_t *)pin;
-	numframes = pingroup->numframes;
+	numframes = LittleLong( pingroup->numframes );
 
 	groupsize = sizeof( mspritegroup_t ) + (numframes - 1) * sizeof( pspritegroup->frames[0] );
 	pspritegroup = Mem_Calloc( mod->mempool, groupsize );
@@ -126,7 +130,7 @@ static const byte *R_SpriteLoadGroup( model_t *mod, const void *pin, mspritefram
 
 	for( i = 0; i < numframes; i++ )
 	{
-		*poutintervals = pin_intervals->interval;
+		*poutintervals = LittleFloat( pin_intervals->interval );
 		if( *poutintervals <= 0.0f )
 			*poutintervals = 1.0f; // set error value
 		poutintervals++;
@@ -156,18 +160,20 @@ void Mod_LoadSpriteModel( model_t *mod, const void *buffer, qboolean *loaded, ui
 	const short     *numi = NULL;
 	const byte      *pframetype;
 	msprite_t       *psprite;
+	int             version;
 	int i;
 
 	pin = buffer;
 	psprite = mod->cache.data;
+	version = LittleLong( pin->version );
 
-	if( pin->version == SPRITE_VERSION_Q1 || pin->version == SPRITE_VERSION_32 )
+	if( version == SPRITE_VERSION_Q1 || version == SPRITE_VERSION_32 )
 		numi = NULL;
-	else if( pin->version == SPRITE_VERSION_HL )
+	else if( version == SPRITE_VERSION_HL )
 		numi = (const short *)((const byte *)buffer + sizeof( dsprite_hl_t ));
 
 	r_texFlags = texFlags;
-	sprite_version = pin->version;
+	sprite_version = version;
 	Q_strncpy( sprite_name, mod->name, sizeof( sprite_name ));
 	COM_StripExtension( sprite_name );
 
@@ -179,11 +185,11 @@ void Mod_LoadSpriteModel( model_t *mod, const void *buffer, qboolean *loaded, ui
 		pframetype = ((const byte*)buffer + sizeof( dsprite_q1_t )); // pinq1 + 1
 		gEngfuncs.FS_FreeImage( pal ); // palette installed, no reason to keep this data
 	}
-	else if( *numi <= 256 )
+	else if( LittleShort( *numi ) <= 256 )
 	{
 		const byte	*src = (const byte *)(numi+1);
 		rgbdata_t	*pal;
-		size_t pal_bytes = *numi * 3;
+		size_t pal_bytes = LittleShort( *numi ) * 3;
 
 		// install palette
 		switch( psprite->texFormat )
@@ -204,7 +210,7 @@ void Mod_LoadSpriteModel( model_t *mod, const void *buffer, qboolean *loaded, ui
 	}
 	else
 	{
-		gEngfuncs.Con_DPrintf( S_ERROR "%s has wrong number of palette colors %i (should be less or equal than 256)\n", mod->name, *numi );
+		gEngfuncs.Con_DPrintf( S_ERROR "%s has wrong number of palette colors %i (should be less or equal than 256)\n", mod->name, LittleShort( *numi ) );
 		return;
 	}
 
@@ -217,7 +223,7 @@ void Mod_LoadSpriteModel( model_t *mod, const void *buffer, qboolean *loaded, ui
 		dframetype_t dframetype;
 
 		memcpy( &dframetype, pframetype, sizeof( dframetype ));
-		frametype = dframetype.type;
+		frametype = LittleLong( dframetype.type );
 		psprite->frames[i].type = (spriteframetype_t)frametype;
 
 		switch( frametype )

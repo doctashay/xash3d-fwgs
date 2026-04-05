@@ -32,7 +32,7 @@ load sprite model
 */
 void Mod_LoadSpriteModel( model_t *mod, const void *buffer, size_t buffersize, qboolean *loaded )
 {
-	const dsprite_t *pin = buffer;
+	dsprite_t *pin = (dsprite_t *)buffer;
 	msprite_t *psprite;
 	char poolname[MAX_VA_STRING];
 
@@ -44,6 +44,9 @@ void Mod_LoadSpriteModel( model_t *mod, const void *buffer, size_t buffersize, q
 		Con_DPrintf( S_ERROR "%s: %s have incorrect file size %zu should be greater than %zu (%s)\n", __func__, mod->name, buffersize, sizeof( dsprite_t ), "basic header" );
 		return;
 	}
+
+	LittleLongSW( pin->ident );
+	LittleLongSW( pin->version );
 
 	if( pin->ident != IDSPRITEHEADER )
 	{
@@ -79,8 +82,16 @@ void Mod_LoadSpriteModel( model_t *mod, const void *buffer, size_t buffersize, q
 
 	if( pin->version == SPRITE_VERSION_Q1 || pin->version == SPRITE_VERSION_32 )
 	{
-		const dsprite_q1_t *pinq1 = buffer;
+		dsprite_q1_t *pinq1 = (dsprite_q1_t *)buffer;
 		size_t size;
+
+		LittleLongSW( pinq1->type );
+		pinq1->boundingradius = LittleFloat( pinq1->boundingradius );
+		LittleLongSW( pinq1->bounds[0] );
+		LittleLongSW( pinq1->bounds[1] );
+		LittleLongSW( pinq1->numframes );
+		pinq1->beamlength = LittleFloat( pinq1->beamlength );
+		LittleLongSW( pinq1->synctype );
 
 		if( pinq1->numframes == 0 )
 		{
@@ -111,8 +122,17 @@ void Mod_LoadSpriteModel( model_t *mod, const void *buffer, size_t buffersize, q
 	}
 	else // if( pin->version == SPRITE_VERSION_HL )
 	{
-		const dsprite_hl_t *pinhl = buffer;
+		dsprite_hl_t *pinhl = (dsprite_hl_t *)buffer;
 		size_t size;
+
+		LittleLongSW( pinhl->type );
+		LittleLongSW( pinhl->texFormat );
+		pinhl->boundingradius = LittleFloat( pinhl->boundingradius );
+		LittleLongSW( pinhl->bounds[0] );
+		LittleLongSW( pinhl->bounds[1] );
+		LittleLongSW( pinhl->numframes );
+		LittleLongSW( pinhl->facetype );
+		LittleLongSW( pinhl->synctype );
 
 		if( pinhl->numframes == 0 )
 		{

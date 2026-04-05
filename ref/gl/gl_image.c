@@ -597,10 +597,20 @@ GL_SetTextureFormat
 */
 static void GL_SetTextureFormat( gl_texture_t *tex, pixformat_t format, int channelMask )
 {
-	qboolean	haveColor = ( channelMask & IMAGE_HAS_COLOR );
-	qboolean	haveAlpha = ( channelMask & IMAGE_HAS_ALPHA );
+	qboolean	haveColor;
+	qboolean	haveAlpha;
 
 	Assert( tex != NULL );
+
+	// PF_RGBA_32 / PF_BGRA_32 always carry 4 bytes per pixel. Call sites often pass
+	// IMAGE_HAS_COLOR only; we would pick a 3-component internal format while still
+	// uploading with GL_RGBA / GL_BGRA. macOS ATI/Apple drivers return GL_INVALID_ENUM
+	// and may leave textures corrupt (z-fighting, black cracks).
+	if( !ImageCompressed( format ) && ( format == PF_RGBA_32 || format == PF_BGRA_32 ))
+		channelMask |= IMAGE_HAS_ALPHA;
+
+	haveColor = ( channelMask & IMAGE_HAS_COLOR ) != 0;
+	haveAlpha = ( channelMask & IMAGE_HAS_ALPHA ) != 0;
 
 	if( ImageCompressed( format ))
 	{

@@ -502,7 +502,7 @@ static fs_offset_t Mod_CalculateMipTexSize( const mip_t *mt, qboolean palette )
 	if( !mt )
 		return 0;
 
-	return sizeof( *mt ) + (( mt->width * mt->height * 85 ) >> 6 ) +
+	return sizeof( *mt ) + (( LittleLong( mt->width ) * LittleLong( mt->height ) * 85 ) >> 6 ) +
 		( palette ? MIPTEX_CUSTOM_PALETTE_SIZE_BYTES : 0 );
 }
 
@@ -514,7 +514,7 @@ static qboolean Mod_CalcMipTexUsesCustomPalette( model_t *mod, dbspmodel_t *bmod
 
 	mipTex = Mod_GetMipTexForTexture( bmod, textureIndex );
 
-	if( !mipTex || mipTex->offsets[0] <= 0 )
+	if( !mipTex || LittleLong( mipTex->offsets[0] ) <= 0 )
 		return false;
 
 	// Calculate the size assuming we are not using a custom palette.
@@ -595,7 +595,7 @@ generic loader
 */
 static void Mod_LoadLump( const void *in, const mlumpinfo_t *info, mlumpstat_t *stat, int flags, loadlump_source_t source, const void *bspx_data )
 {
-	int     version = ((const dheader_t *)in)->version, i;
+	int     version = LittleLong(((const dheader_t *)in)->version), i;
 	size_t  numelems, real_entrysize;
 	dlump_t l = { 0 };
 
@@ -605,14 +605,18 @@ static void Mod_LoadLump( const void *in, const mlumpinfo_t *info, mlumpstat_t *
 	{
 		const dheader_t *header = in;
 		l = header->lumps[info->lumpnumber];
+		l.fileofs = LittleLong( l.fileofs );
+		l.filelen = LittleLong( l.filelen );
 		break;
 	}
 	case LOADLUMP_BSP30EXT:
 	{
 		const dextrahdr_t *header = (const dextrahdr_t *)((const byte *)in + sizeof( dheader_t ));
-		if( header->id != IDEXTRAHEADER || header->version != EXTRA_VERSION )
+		if( LittleLong( header->id ) != IDEXTRAHEADER || LittleLong( header->version ) != EXTRA_VERSION )
 			return;
 		l = header->lumps[info->lumpnumber];
+		l.fileofs = LittleLong( l.fileofs );
+		l.filelen = LittleLong( l.filelen );
 		break;
 	}
 	case LOADLUMP_BSPX:
@@ -622,15 +626,15 @@ static void Mod_LoadLump( const void *in, const mlumpinfo_t *info, mlumpstat_t *
 
 		const dbspx_hdr_t *header = bspx_data;
 
-		if( header->id != IDBSPXHEADER )
+		if( LittleLong( header->id ) != IDBSPXHEADER )
 			return;
 
-		for( i = 0; i < header->numlumps; i++ )
+		for( i = 0; i < LittleLong( header->numlumps ); i++ )
 		{
 			if( !Q_strcmp( info->lumpname, header->lumps[i].lumpname ))
 			{
-				l.fileofs = header->lumps[i].fileofs;
-				l.filelen = header->lumps[i].filelen;
+				l.fileofs = LittleLong( header->lumps[i].fileofs );
+				l.filelen = LittleLong( header->lumps[i].filelen );
 				break;
 			}
 		}
@@ -721,6 +725,16 @@ static void Mod_LoadLump( const void *in, const mlumpinfo_t *info, mlumpstat_t *
 	}
 
 	numelems = l.filelen / real_entrysize;
+
+	// Hard guard against malformed lumps (common when endian parsing goes wrong):
+	// never allow reading beyond declared per-lump limits.
+	if( numelems > info->maxcount )
+	{
+		if( !FBitSet( flags, LUMP_SILENT ))
+			Con_DPrintf( S_ERROR "map ^2%s^7 has invalid %s lump size (%d bytes)\n", loadstat.name, info->loadname, l.filelen );
+		loadstat.numerrors++;
+		return;
+	}
 
 	if( numelems < info->mincount )
 	{
@@ -2083,6 +2097,13 @@ static void Mod_LoadSubmodels( model_t *mod, dbspmodel_t *bmod )
 
 	for( int i = 0; i < bmod->numsubmodels; i++, in++, out++ )
 	{
+		in->mins[0] = LittleFloat( in->mins[0] );
+		in->mins[1] = LittleFloat( in->mins[1] );
+		in->mins[2] = LittleFloat( in->mins[2] );
+		in->maxs[0] = LittleFloat( in->maxs[0] );
+		in->maxs[1] = LittleFloat( in->maxs[1] );
+		in->maxs[2] = LittleFloat( in->maxs[2] );
+
 		for( int j = 0; j < 3; j++ )
 		{
 			// reset empty bounds to prevent error
@@ -2098,11 +2119,11 @@ static void Mod_LoadSubmodels( model_t *mod, dbspmodel_t *bmod )
 		}
 
 		for( int j = 0; j < MAX_MAP_HULLS; j++ )
-			out->headnode[j] = in->headnode[j];
+			out->headnode[j] = LittleLong( in->headnode[j] );
 
-		out->visleafs = in->visleafs;
-		out->firstface = in->firstface;
-		out->numfaces = in->numfaces;
+		out->visleafs = LittleLong( in->visleafs );
+		out->firstface = LittleLong( in->firstface );
+		out->numfaces = LittleLong( in->numfaces );
 
 		if( i == 0 && bmod->isworld )
 			continue; // skip the world to save mem
@@ -2284,7 +2305,7 @@ static void Mod_LoadPlanes( model_t *mod, const dbspmodel_t *bmod )
 		out->signbits = 0;
 		for( j = 0; j < 3; j++ )
 		{
-			out->normal[j] = in->normal[j];
+			out->normal[j] = LittleFloat( in->normal[j] );
 
 			if( out->normal[j] < 0.0f )
 				SetBits( out->signbits, BIT( j ));
@@ -2293,8 +2314,8 @@ static void Mod_LoadPlanes( model_t *mod, const dbspmodel_t *bmod )
 		if( VectorLength( out->normal ) < 0.5f )
 			Con_Printf( S_ERROR "bad normal for plane #%i\n", i );
 
-		out->dist = in->dist;
-		out->type = in->type;
+		out->dist = LittleFloat( in->dist );
+		out->type = LittleLong( in->type );
 	}
 }
 
@@ -2317,6 +2338,10 @@ static void Mod_LoadVertexes( model_t *mod, dbspmodel_t *bmod )
 
 	for( i = 0; i < bmod->numvertexes; i++, in++, out++ )
 	{
+		in->point[0] = LittleFloat( in->point[0] );
+		in->point[1] = LittleFloat( in->point[1] );
+		in->point[2] = LittleFloat( in->point[2] );
+
 		if( bmod->isworld )
 			AddPointToBounds( in->point, world.mins, world.maxs );
 		VectorCopy( in->point, out->position );
@@ -2353,8 +2378,8 @@ static void Mod_LoadEdges( model_t *mod, dbspmodel_t *bmod )
 
 		for( i = 0; i < bmod->numedges; i++, in++, out++ )
 		{
-			out->v[0] = in->v[0];
-			out->v[1] = in->v[1];
+			out->v[0] = LittleLong( in->v[0] );
+			out->v[1] = LittleLong( in->v[1] );
 		}
 	}
 	else
@@ -2365,8 +2390,8 @@ static void Mod_LoadEdges( model_t *mod, dbspmodel_t *bmod )
 
 		for( i = 0; i < bmod->numedges; i++, in++, out++ )
 		{
-			out->v[0] = (word)in->v[0];
-			out->v[1] = (word)in->v[1];
+			out->v[0] = LittleShort((word)in->v[0] );
+			out->v[1] = LittleShort((word)in->v[1] );
 		}
 	}
 }
@@ -2381,6 +2406,9 @@ static void Mod_LoadSurfEdges( model_t *mod, dbspmodel_t *bmod )
 	mod->surfedges = Mem_Malloc( mod->mempool, bmod->numsurfedges * sizeof( dsurfedge_t ));
 	memcpy( mod->surfedges, bmod->surfedges, bmod->numsurfedges * sizeof( dsurfedge_t ));
 	mod->numsurfedges = bmod->numsurfedges;
+
+	for( int i = 0; i < mod->numsurfedges; i++ )
+		LittleLongSW( mod->surfedges[i] );
 }
 
 /*
@@ -2402,9 +2430,10 @@ static void Mod_LoadMarkSurfaces( model_t *mod, dbspmodel_t *bmod )
 
 		for( i = 0; i < bmod->nummarkfaces; i++ )
 		{
-			if( in[i] < 0 || in[i] >= mod->numsurfaces )
+			const int surfnum = (int32_t)LittleLong( in[i] );
+			if( surfnum < 0 || surfnum >= mod->numsurfaces )
 				Host_Error( "%s: bad surface number %i at %i (max %i) in '%s'\n", __func__, in[i], i, mod->numsurfaces, mod->name );
-			out[i] = mod->surfaces + in[i];
+			out[i] = mod->surfaces + surfnum;
 		}
 	}
 	else
@@ -2413,20 +2442,22 @@ static void Mod_LoadMarkSurfaces( model_t *mod, dbspmodel_t *bmod )
 
 		for( i = 0; i < bmod->nummarkfaces; i++ )
 		{
+			const int surfnum = LittleShort( in[i] );
+
 			// NOTE: some of the buggy compilers have written a broken BSP file
 			// with marksurface pointing at negative surface, for example darkf6.bsp
 			// and darkf26.bsp in darkfuture mod. GoldSrc straight up writes
 			// invalid pointer to a surface. Try to fix up these cases...
-			if( mod->numsurfaces <= INT16_MAX && (int16_t)in[i] < 0 )
+			if( mod->numsurfaces <= INT16_MAX && (int16_t)surfnum < 0 )
 			{
 				Con_Printf( S_WARN "%s: fixing up bad surface number %i at %i (max %i) in '%s'\n", __func__, in[i], i, mod->numsurfaces, mod->name );
 				out[i] = mod->surfaces;
 				continue;
 			}
 
-			if( in[i] < 0 || in[i] >= mod->numsurfaces )
+			if( surfnum < 0 || surfnum >= mod->numsurfaces )
 				Host_Error( "%s: bad surface number %i at %i (max %i) in '%s'\n", __func__, in[i], i, mod->numsurfaces, mod->name );
-			out[i] = mod->surfaces + in[i];
+			out[i] = mod->surfaces + surfnum;
 		}
 	}
 }
@@ -2526,11 +2557,11 @@ static void Mod_InitSkyClouds( model_t *mod, const mip_t *mt, texture_t *tx, qbo
 		else goto done; // replacements found, notify the renderer and exit
 	}
 
-	Q_snprintf( texname, sizeof( texname ), "%s%s.mip", ( mt->offsets[0] > 0 ) ? "#" : "", tx->name );
+	Q_snprintf( texname, sizeof( texname ), "%s%s.mip", ( LittleLong( mt->offsets[0] ) > 0 ) ? "#" : "", tx->name );
 
-	if( mt->offsets[0] > 0 )
+	if( LittleLong( mt->offsets[0] ) > 0 )
 	{
-		size_t size = sizeof( mip_t ) + (( mt->width * mt->height * 85 ) >> 6 );
+		size_t size = sizeof( mip_t ) + (( LittleLong( mt->width ) * LittleLong( mt->height ) * 85 ) >> 6 );
 
 		if( custom_palette )
 			size += sizeof( short ) + 768;
@@ -2648,7 +2679,7 @@ static void Mod_LoadTextureData( model_t *mod, dbspmodel_t *bmod, int textureInd
 	const uint texture_force_flags = r_allow_wad3_luma.value ? IL_ALLOW_WAD3_LUMA : 0;
 
 	// check for multi-layered sky texture (quake1 specific)
-	if( bmod->isworld && Q_strncmp( mipTex->name, "sky", 3 ) == 0 && ( mipTex->width / mipTex->height ) == 2 )
+	if( bmod->isworld && Q_strncmp( mipTex->name, "sky", 3 ) == 0 && ( LittleLong( mipTex->width ) / LittleLong( mipTex->height ) ) == 2 )
 	{
 		Mod_InitSkyClouds( mod, mipTex, texture, usesCustomPalette ); // load quake sky
 		return;
@@ -2686,7 +2717,7 @@ static void Mod_LoadTextureData( model_t *mod, dbspmodel_t *bmod, int textureInd
 	}
 
 	// Try WAD texture (force while r_wadtextures is 1)
-	if( !texture->gl_texturenum && (( r_wadtextures.value && world.wadcount > 0 ) || mipTex->offsets[0] <= 0 ))
+	if( !texture->gl_texturenum && (( r_wadtextures.value && world.wadcount > 0 ) || LittleLong( mipTex->offsets[0] ) <= 0 ))
 	{
 		rgbdata_t *pic = NULL;
 		int wad_index = Mod_LoadTextureFromWadList( world.wadlist, world.wadcount, mipTex->name, Host_IsDedicated() ? NULL : &pic, texpath, sizeof( texpath ));
@@ -2711,7 +2742,7 @@ static void Mod_LoadTextureData( model_t *mod, dbspmodel_t *bmod, int textureInd
 		return;
 
 	// WAD failed, so use internal texture (if present)
-	if( mipTex->offsets[0] > 0 && texture->gl_texturenum == 0 )
+	if( LittleLong( mipTex->offsets[0] ) > 0 && texture->gl_texturenum == 0 )
 	{
 		string texName;
 		const size_t size = Mod_CalculateMipTexSize( mipTex, usesCustomPalette );
@@ -2752,7 +2783,7 @@ static void Mod_LoadTextureData( model_t *mod, dbspmodel_t *bmod, int textureInd
 
 		Image_SetForceFlags( texture_force_flags );
 
-		if( mipTex->offsets[0] > 0 )
+		if( LittleLong( mipTex->offsets[0] ) > 0 )
 		{
 			const size_t size = Mod_CalculateMipTexSize( mipTex, usesCustomPalette );
 			texture->fb_texturenum = ref.dllFuncs.GL_LoadTexture( texName, (byte *)mipTex, size, TF_MAKELUMA );
@@ -2805,8 +2836,8 @@ static void Mod_LoadTexture( model_t *mod, dbspmodel_t *bmod, int textureIndex )
 	// Ensure texture name is lowercase.
 	Q_strnlwr( mipTex->name, texture->name, sizeof( texture->name ));
 
-	texture->width = mipTex->width;
-	texture->height = mipTex->height;
+	texture->width = LittleLong( mipTex->width );
+	texture->height = LittleLong( mipTex->height );
 
 	Mod_LoadTextureData( mod, bmod, textureIndex );
 }
@@ -2974,6 +3005,7 @@ static void Mod_LoadTextures( model_t *mod, dbspmodel_t *bmod )
 #endif
 
 	lump = bmod->textures;
+	LittleLongSW( lump->nummiptex );
 
 	if( bmod->texdatasize < 1 || !lump || lump->nummiptex < 1 )
 	{
@@ -2984,6 +3016,9 @@ static void Mod_LoadTextures( model_t *mod, dbspmodel_t *bmod )
 
 	mod->textures = (texture_t **)Mem_Calloc( mod->mempool, lump->nummiptex * sizeof( texture_t * ));
 	mod->numtextures = lump->nummiptex;
+
+	for( int i = 0; i < lump->nummiptex; i++ )
+		LittleLongSW( lump->dataofs[i] );
 
 	Mod_LoadAllTextures( mod, bmod );
 	Mod_SequenceAllAnimatedTextures( mod );
@@ -3022,13 +3057,14 @@ static void Mod_LoadTexInfo( model_t *mod, dbspmodel_t *bmod )
 	{
 		for( j = 0; j < 2; j++ )
 			for( k = 0; k < 4; k++ )
-				out->vecs[j][k] = in->vecs[j][k];
+				out->vecs[j][k] = LittleFloat( in->vecs[j][k] );
 
-		miptex = in->miptex;
+		miptex = LittleLong( in->miptex );
 		if( miptex < 0 || miptex >= mod->numtextures )
 			miptex = 0; // this is possible?
 		out->texture = mod->textures[miptex];
-		out->flags = in->flags;
+		out->flags = (int16_t)LittleShort( in->flags );
+		LittleShortSW( in->faceinfo );
 
 		// make sure what faceinfo is really exist
 		if( faceinfo != NULL && in->faceinfo != -1 && in->faceinfo < bmod->numfaceinfo )
@@ -3072,37 +3108,37 @@ static void Mod_LoadSurfaces( model_t *mod, dbspmodel_t *bmod )
 		{
 			dface32_t	*in = &bmod->surfaces32[i];
 
-			if(( in->firstedge + in->numedges ) > mod->numsurfedges )
+			if(( (int32_t)LittleLong( in->firstedge ) + (int32_t)LittleLong( in->numedges )) > mod->numsurfedges )
 				continue;	// corrupted level?
-			out->firstedge = in->firstedge;
-			out->numedges = in->numedges;
-			if( in->side ) SetBits( out->flags, SURF_PLANEBACK );
-			out->plane = mod->planes + in->planenum;
-			out->texinfo = mod->texinfo + in->texinfo;
+			out->firstedge = LittleLong( in->firstedge );
+			out->numedges = LittleLong( in->numedges );
+			if( LittleLong( in->side )) SetBits( out->flags, SURF_PLANEBACK );
+			out->plane = mod->planes + (int32_t)LittleLong( in->planenum );
+			out->texinfo = mod->texinfo + (int32_t)LittleLong( in->texinfo );
 
 			for( j = 0; j < MAXLIGHTMAPS; j++ )
 				out->styles[j] = in->styles[j];
-			lightofs = in->lightofs;
+			lightofs = LittleLong( in->lightofs );
 		}
 		else
 		{
 			dface_t	*in = &bmod->surfaces[i];
 
-			if(( in->firstedge + in->numedges ) > mod->numsurfedges )
+			if(( (int32_t)LittleLong( in->firstedge ) + (int16_t)LittleShort( in->numedges )) > mod->numsurfedges )
 			{
 				Con_Reportf( S_ERROR "bad surface %i from %zu\n", i, bmod->numsurfaces );
 				continue;
 			}
 
-			out->firstedge = in->firstedge;
-			out->numedges = in->numedges;
-			if( in->side ) SetBits( out->flags, SURF_PLANEBACK );
-			out->plane = mod->planes + in->planenum;
-			out->texinfo = mod->texinfo + in->texinfo;
+			out->firstedge = LittleLong( in->firstedge );
+			out->numedges = (int16_t)LittleShort( in->numedges );
+			if( LittleShort( in->side )) SetBits( out->flags, SURF_PLANEBACK );
+			out->plane = mod->planes + LittleShort( in->planenum );
+			out->texinfo = mod->texinfo + (int16_t)LittleShort( in->texinfo );
 
 			for( j = 0; j < MAXLIGHTMAPS; j++ )
 				out->styles[j] = in->styles[j];
-			lightofs = in->lightofs;
+			lightofs = LittleLong( in->lightofs );
 		}
 
 		tex = out->texinfo->texture;
@@ -3207,35 +3243,35 @@ static void Mod_LoadNodes( model_t *mod, dbspmodel_t *bmod )
 
 			for( j = 0; j < 3; j++ )
 			{
-				out->minmaxs[j+0] = in->mins[j];
-				out->minmaxs[j+3] = in->maxs[j];
+				out->minmaxs[j+0] = LittleFloat( in->mins[j] );
+				out->minmaxs[j+3] = LittleFloat( in->maxs[j] );
 			}
 
 #if !XASH_64BIT
-			if( in->firstface >= BIT( 24 ))
+			if((int32_t)LittleLong( in->firstface ) >= BIT( 24 ))
 			{
 				Host_Error( "%s: face index limit exceeded on node %i\n", __func__, i );
 				return;
 			}
 
-			if( in->numfaces >= BIT( 24 ))
+			if((int32_t)LittleLong( in->numfaces ) >= BIT( 24 ))
 			{
 				Host_Error( "%s: face count limit exceeded on node %i\n", __func__, i );
 				return;
 			}
 #endif
 
-			p = in->planenum;
+			p = LittleLong( in->planenum );
 			out->plane = mod->planes + p;
-			out->firstsurface_0 = in->firstface & 0xFFFF;
-			out->numsurfaces_0  = in->numfaces  & 0xFFFF;
+			out->firstsurface_0 = LittleLong( in->firstface ) & 0xFFFF;
+			out->numsurfaces_0  = LittleLong( in->numfaces )  & 0xFFFF;
 
-			out->firstsurface_1 = in->firstface >> 16;
-			out->numsurfaces_1  = in->numfaces >> 16;
+			out->firstsurface_1 = LittleLong( in->firstface ) >> 16;
+			out->numsurfaces_1  = LittleLong( in->numfaces ) >> 16;
 
 			for( j = 0; j < 2; j++ )
 			{
-				p = in->children[j];
+				p = LittleLong( in->children[j] );
 #if XASH_64BIT
 				if( p >= 0 ) out->children_[j] = mod->nodes + p;
 				else out->children_[j] = (mnode_t *)(mod->leafs + ( -1 - p ));
@@ -3275,18 +3311,18 @@ static void Mod_LoadNodes( model_t *mod, dbspmodel_t *bmod )
 
 			for( j = 0; j < 3; j++ )
 			{
-				out->minmaxs[j+0] = in->mins[j];
-				out->minmaxs[j+3] = in->maxs[j];
+				out->minmaxs[j+0] = (int16_t)LittleShort( in->mins[j] );
+				out->minmaxs[j+3] = (int16_t)LittleShort( in->maxs[j] );
 			}
 
-			p = in->planenum;
+			p = LittleLong( in->planenum );
 			out->plane = mod->planes + p;
-			out->firstsurface_0 = in->firstface;
-			out->numsurfaces_0 = in->numfaces;
+			out->firstsurface_0 = LittleShort( in->firstface );
+			out->numsurfaces_0 = LittleShort( in->numfaces );
 
 			for( j = 0; j < 2; j++ )
 			{
-				p = in->children[j];
+				p = (int16_t)LittleShort( in->children[j] );
 				if( p >= 0 ) out->children_[j] = mod->nodes + p;
 				else out->children_[j] = (mnode_t *)(mod->leafs + ( -1 - p ));
 			}
@@ -3327,18 +3363,18 @@ static void Mod_LoadLeafs( model_t *mod, dbspmodel_t *bmod )
 
 			for( j = 0; j < 3; j++ )
 			{
-				out->minmaxs[j+0] = in->mins[j];
-				out->minmaxs[j+3] = in->maxs[j];
+				out->minmaxs[j+0] = LittleFloat( in->mins[j] );
+				out->minmaxs[j+3] = LittleFloat( in->maxs[j] );
 			}
 
-			out->contents = in->contents;
-			p = in->visofs;
+			out->contents = LittleLong( in->contents );
+			p = LittleLong( in->visofs );
 
 			for( j = 0; j < 4; j++ )
 				out->ambient_sound_level[j] = in->ambient_level[j];
 
-			out->firstmarksurface = mod->marksurfaces + in->firstmarksurface;
-			out->nummarksurfaces = in->nummarksurfaces;
+			out->firstmarksurface = mod->marksurfaces + (int32_t)LittleLong( in->firstmarksurface );
+			out->nummarksurfaces = LittleLong( in->nummarksurfaces );
 		}
 		else
 		{
@@ -3346,18 +3382,18 @@ static void Mod_LoadLeafs( model_t *mod, dbspmodel_t *bmod )
 
 			for( j = 0; j < 3; j++ )
 			{
-				out->minmaxs[j+0] = in->mins[j];
-				out->minmaxs[j+3] = in->maxs[j];
+				out->minmaxs[j+0] = (int16_t)LittleShort( in->mins[j] );
+				out->minmaxs[j+3] = (int16_t)LittleShort( in->maxs[j] );
 			}
 
-			out->contents = in->contents;
-			p = in->visofs;
+			out->contents = LittleLong( in->contents );
+			p = LittleLong( in->visofs );
 
 			for( j = 0; j < 4; j++ )
 				out->ambient_sound_level[j] = in->ambient_level[j];
 
-			out->firstmarksurface = mod->marksurfaces + in->firstmarksurface;
-			out->nummarksurfaces = in->nummarksurfaces;
+			out->firstmarksurface = mod->marksurfaces + LittleShort( in->firstmarksurface );
+			out->nummarksurfaces = LittleShort( in->nummarksurfaces );
 		}
 
 		if( bmod->isworld )
@@ -3564,9 +3600,9 @@ static void Mod_LoadClipnodes( model_t *mod, dbspmodel_t *bmod )
 
 		for( i = 0; i < bmod->numclipnodes; i++, out++, in++ )
 		{
-			out->planenum = in->planenum;
-			out->children[0] = in->children[0];
-			out->children[1] = in->children[1];
+			out->planenum = LittleLong( in->planenum );
+			out->children[0] = LittleLong( in->children[0] );
+			out->children[1] = LittleLong( in->children[1] );
 		}
 	}
 	else
@@ -3575,10 +3611,10 @@ static void Mod_LoadClipnodes( model_t *mod, dbspmodel_t *bmod )
 
 		for( i = 0; i < bmod->numclipnodes; i++, out++, in++ )
 		{
-			out->planenum = in->planenum;
+			out->planenum = LittleLong( in->planenum );
 
-			out->children[0] = (unsigned short)in->children[0];
-			out->children[1] = (unsigned short)in->children[1];
+			out->children[0] = LittleShort((unsigned short)in->children[0] );
+			out->children[1] = LittleShort((unsigned short)in->children[1] );
 
 			// aguirRe QBSP 'broken' clipnodes
 			if( out->children[0] >= bmod->numclipnodes )
@@ -3707,13 +3743,35 @@ static void Mod_LoadLighting( model_t *mod, dbspmodel_t *bmod )
 		int lightofs;
 
 		if( bmod->version == QBSP2_VERSION )
-			lightofs = bmod->surfaces32[i].lightofs;
+			lightofs = LittleLong( bmod->surfaces32[i].lightofs );
 		else
-			lightofs = bmod->surfaces[i].lightofs;
+			lightofs = LittleLong( bmod->surfaces[i].lightofs );
 
 		if( lightofs != -1 )
 		{
 			int offset = lightofs / bmod->lightmap_samples;
+			const msurface_t *surf = &mod->surfaces[i];
+			const mextrasurf_t *info = surf->info;
+			const int sample_size = Mod_SampleSizeForFace( surf );
+			const int smax = ( info->lightextents[0] / sample_size ) + 1;
+			const int tmax = ( info->lightextents[1] / sample_size ) + 1;
+			const int face_samples = smax * tmax;
+			int styles = 0;
+			const int light_samples_count = bmod->lightdatasize / bmod->lightmap_samples;
+
+			for( ; styles < MAXLIGHTMAPS && surf->styles[styles] != 255; styles++ )
+				;
+			if( styles <= 0 )
+				styles = 1;
+
+			if( offset < 0 || offset >= light_samples_count ||
+				face_samples <= 0 ||
+				offset + face_samples * styles > light_samples_count )
+			{
+				Con_DPrintf( S_WARN "%s: ignoring invalid lightofs for %s surface %d (ofs=%d samples=%d styles=%d total=%d)\n",
+					__func__, mod->name, i, offset, face_samples, styles, light_samples_count );
+				continue;
+			}
 
 			// NOTE: we divide offset by three because lighting and deluxemap keep their pointers
 			// into three-bytes structs and shadowmap just monochrome
@@ -3758,18 +3816,18 @@ static fs_offset_t Mod_FindEndOfBSPFile( const byte *mod_base, size_t bufferlen 
 	// find the maximum offset
 	for( int i = 0; i < ARRAYSIZE( header->lumps ); i++ )
 	{
-		fs_offset_t offset = header->lumps[i].fileofs + header->lumps[i].filelen;
+		fs_offset_t offset = LittleLong( header->lumps[i].fileofs ) + LittleLong( header->lumps[i].filelen );
 
 		if( max_offset < offset )
 			max_offset = offset;
 	}
 
 	// to be able to combine BSPX data with BSP30ext, check the extended header too
-	if( header->version == HLBSP_VERSION && ext_header->id == IDEXTRAHEADER && ext_header->version == EXTRA_VERSION )
+	if( LittleLong( header->version ) == HLBSP_VERSION && LittleLong( ext_header->id ) == IDEXTRAHEADER && LittleLong( ext_header->version ) == EXTRA_VERSION )
 	{
 		for( int i = 0; i < ARRAYSIZE( ext_header->lumps ); i++ )
 		{
-			fs_offset_t offset = ext_header->lumps[i].fileofs + ext_header->lumps[i].filelen;
+			fs_offset_t offset = LittleLong( ext_header->lumps[i].fileofs ) + LittleLong( ext_header->lumps[i].filelen );
 
 			if( max_offset < offset )
 				max_offset = offset;
@@ -3797,7 +3855,7 @@ static fs_offset_t Mod_FindBSPX( const byte *mod_base, size_t bufferlen )
 		return -1;
 
 	bspx_header = (const dbspx_hdr_t *)( mod_base + max_offset );
-	if( bspx_header->id != LittleLong( IDBSPXHEADER ))
+	if( LittleLong( bspx_header->id ) != IDBSPXHEADER )
 		return -1;
 
 	Con_DPrintf( "Found valid BSPX signature at %lld\n", (long long)max_offset );
@@ -3832,16 +3890,16 @@ static qboolean Mod_LoadBmodelLumps( model_t *mod, byte *mod_base, size_t buffer
 	srclumps[0].lumpnumber = LUMP_ENTITIES;
 	srclumps[1].lumpnumber = LUMP_PLANES;
 
-	switch( header->version )
+	switch( LittleLong( header->version ))
 	{
 	case HLBSP_VERSION:
-		if( *extident == IDEXTRAHEADER )
+		if( LittleLong( *extident ) == IDEXTRAHEADER )
 		{
 			SetBits( flags, LUMP_BSP30EXT );
 		}
 		// only relevant for half-life maps
-		else if( !Mod_LumpLooksLikeEntities( mod_base + header->lumps[LUMP_ENTITIES].fileofs, header->lumps[LUMP_ENTITIES].filelen ) &&
-			 Mod_LumpLooksLikeEntities( mod_base + header->lumps[LUMP_PLANES].fileofs, header->lumps[LUMP_PLANES].filelen ))
+		else if( !Mod_LumpLooksLikeEntities( mod_base + LittleLong( header->lumps[LUMP_ENTITIES].fileofs ), LittleLong( header->lumps[LUMP_ENTITIES].filelen )) &&
+			 Mod_LumpLooksLikeEntities( mod_base + LittleLong( header->lumps[LUMP_PLANES].fileofs ), LittleLong( header->lumps[LUMP_PLANES].filelen )))
 		{
 			// blue-shift swapped lumps
 			srclumps[0].lumpnumber = LUMP_PLANES;
@@ -3859,7 +3917,7 @@ static qboolean Mod_LoadBmodelLumps( model_t *mod, byte *mod_base, size_t buffer
 		return false;
 	}
 
-	bmod->version = header->version;	// share up global
+	bmod->version = LittleLong( header->version );	// share up global
 	if( isworld )
 	{
 		world.flags = 0;	// clear world settings
@@ -3957,6 +4015,24 @@ static int Mod_LumpLooksLikeEntitiesFile( file_t *f, const dlump_t *l, int flags
 {
 	char *buf;
 	int ret;
+	fs_offset_t filelen;
+
+	filelen = FS_FileLength( f );
+
+	if( l->fileofs < 0 || l->filelen <= 0 || (fs_offset_t)l->fileofs + l->filelen > filelen )
+	{
+		if( !FBitSet( flags, LUMP_SILENT ))
+			Con_DPrintf( S_ERROR "map ^2%s^7 has invalid %s lump bounds (%d, %d)\n", loadstat.name, msg, l->fileofs, l->filelen );
+		return -1;
+	}
+
+	// Guard against bogus endian-decoded lengths causing huge allocations.
+	if( l->filelen > MAX_MAP_ENTSTRING )
+	{
+		if( !FBitSet( flags, LUMP_SILENT ))
+			Con_DPrintf( S_ERROR "map ^2%s^7 has too large %s lump (%d bytes)\n", loadstat.name, msg, l->filelen );
+		return -1;
+	}
 
 	if( FS_Seek( f, l->fileofs, SEEK_SET ) < 0 )
 	{
@@ -4009,23 +4085,29 @@ qboolean Mod_TestBmodelLumps( file_t *f, const char *name, byte *mod_base, size_
 	srclumps[0].lumpnumber = LUMP_ENTITIES;
 	srclumps[1].lumpnumber = LUMP_PLANES;
 
-	switch( header->version )
+	switch( LittleLong( header->version ))
 	{
 	case HLBSP_VERSION:
-		if( buffersize > sizeof( *header ) + sizeof( dextrahdr_t ) && *extident == IDEXTRAHEADER )
+		if( buffersize > sizeof( *header ) + sizeof( dextrahdr_t ) && LittleLong( *extident ) == IDEXTRAHEADER )
 		{
 			SetBits( flags, LUMP_BSP30EXT );
 		}
 		else
 		{
 			// only relevant for half-life maps
-			int ret = Mod_LumpLooksLikeEntitiesFile( f, &header->lumps[LUMP_ENTITIES], flags, "entities" );
+			dlump_t entities_lump = header->lumps[LUMP_ENTITIES];
+			entities_lump.fileofs = LittleLong( entities_lump.fileofs );
+			entities_lump.filelen = LittleLong( entities_lump.filelen );
+			int ret = Mod_LumpLooksLikeEntitiesFile( f, &entities_lump, flags, "entities" );
 			if( ret < 0 )
 				return false;
 
 			if( !ret )
 			{
-				ret = Mod_LumpLooksLikeEntitiesFile( f, &header->lumps[LUMP_PLANES], flags, "planes" );
+				dlump_t planes_lump = header->lumps[LUMP_PLANES];
+				planes_lump.fileofs = LittleLong( planes_lump.fileofs );
+				planes_lump.filelen = LittleLong( planes_lump.filelen );
+				ret = Mod_LumpLooksLikeEntitiesFile( f, &planes_lump, flags, "planes" );
 				if( ret < 0 )
 					return false;
 
@@ -4044,13 +4126,15 @@ qboolean Mod_TestBmodelLumps( file_t *f, const char *name, byte *mod_base, size_
 	default:
 		// don't early out: let me analyze errors
 		if( !FBitSet( flags, LUMP_SILENT ))
-			Con_Printf( S_ERROR "%s has wrong version number (%i should be %i)\n", name, header->version, HLBSP_VERSION );
+			Con_Printf( S_ERROR "%s has wrong version number (%i should be %i)\n", name, LittleLong( header->version ), HLBSP_VERSION );
 		loadstat.numerrors++;
 		break;
 	}
 
 	// get entities lump to caller
 	*entities = header->lumps[srclumps[0].lumpnumber];
+	entities->fileofs = LittleLong( entities->fileofs );
+	entities->filelen = LittleLong( entities->filelen );
 
 	// loading base lumps
 	for( i = 0; i < ARRAYSIZE( srclumps ); i++, stat_index++ )
@@ -4123,7 +4207,7 @@ int GAME_EXPORT Mod_CheckLump( const char *filename, const int lump, int *lumpsi
 
 	header = (dheader_t *)buffer;
 
-	if( header->version != HLBSP_VERSION )
+	if( LittleLong( header->version ) != HLBSP_VERSION )
 	{
 		FS_Close( f );
 		return LUMP_LOAD_BAD_VERSION;
@@ -4131,7 +4215,7 @@ int GAME_EXPORT Mod_CheckLump( const char *filename, const int lump, int *lumpsi
 
 	extrahdr = (dextrahdr_t *)((byte *)buffer + sizeof( dheader_t ));
 
-	if( extrahdr->id != IDEXTRAHEADER || extrahdr->version != EXTRA_VERSION )
+	if( LittleLong( extrahdr->id ) != IDEXTRAHEADER || LittleLong( extrahdr->version ) != EXTRA_VERSION )
 	{
 		FS_Close( f );
 		return LUMP_LOAD_NO_EXTRADATA;
@@ -4143,14 +4227,14 @@ int GAME_EXPORT Mod_CheckLump( const char *filename, const int lump, int *lumpsi
 		return LUMP_LOAD_INVALID_NUM;
 	}
 
-	if( extrahdr->lumps[lump].filelen <= 0 )
+	if( LittleLong( extrahdr->lumps[lump].filelen ) <= 0 )
 	{
 		FS_Close( f );
 		return LUMP_LOAD_NOT_EXIST;
 	}
 
 	if( lumpsize )
-		*lumpsize = extrahdr->lumps[lump].filelen;
+		*lumpsize = LittleLong( extrahdr->lumps[lump].filelen );
 
 	FS_Close( f );
 
@@ -4184,7 +4268,7 @@ int GAME_EXPORT Mod_ReadLump( const char *filename, const int lump, void **lumpd
 
 	header = (dheader_t *)buffer;
 
-	if( header->version != HLBSP_VERSION )
+	if( LittleLong( header->version ) != HLBSP_VERSION )
 	{
 		FS_Close( f );
 		return LUMP_LOAD_BAD_VERSION;
@@ -4192,7 +4276,7 @@ int GAME_EXPORT Mod_ReadLump( const char *filename, const int lump, void **lumpd
 
 	extrahdr = (dextrahdr_t *)((byte *)buffer + sizeof( dheader_t ));
 
-	if( extrahdr->id != IDEXTRAHEADER || extrahdr->version != EXTRA_VERSION )
+	if( LittleLong( extrahdr->id ) != IDEXTRAHEADER || LittleLong( extrahdr->version ) != EXTRA_VERSION )
 	{
 		FS_Close( f );
 		return LUMP_LOAD_NO_EXTRADATA;
@@ -4204,14 +4288,14 @@ int GAME_EXPORT Mod_ReadLump( const char *filename, const int lump, void **lumpd
 		return LUMP_LOAD_INVALID_NUM;
 	}
 
-	if( extrahdr->lumps[lump].filelen <= 0 )
+	if( LittleLong( extrahdr->lumps[lump].filelen ) <= 0 )
 	{
 		FS_Close( f );
 		return LUMP_LOAD_NOT_EXIST;
 	}
 
-	data = malloc( extrahdr->lumps[lump].filelen + 1 );
-	length = extrahdr->lumps[lump].filelen;
+	data = malloc( LittleLong( extrahdr->lumps[lump].filelen ) + 1 );
+	length = LittleLong( extrahdr->lumps[lump].filelen );
 
 	if( !data )
 	{
@@ -4219,7 +4303,7 @@ int GAME_EXPORT Mod_ReadLump( const char *filename, const int lump, void **lumpd
 		return LUMP_LOAD_MEM_FAILED;
 	}
 
-	FS_Seek( f, extrahdr->lumps[lump].fileofs, SEEK_SET );
+	FS_Seek( f, LittleLong( extrahdr->lumps[lump].fileofs ), SEEK_SET );
 
 	if( FS_Read( f, data, length ) != length )
 	{

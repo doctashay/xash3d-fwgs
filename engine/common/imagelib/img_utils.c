@@ -286,7 +286,7 @@ int Image_ComparePalette( const byte *pal )
 static void Image_SetPalette( const byte *pal, uint *d_table )
 {
 	byte	rgba[4];
-	uint uirgba; // TODO: palette looks byte-swapped on big-endian
+	uint uirgba;
 	int	i;
 
 	// setup palette
@@ -297,7 +297,11 @@ static void Image_SetPalette( const byte *pal, uint *d_table )
 		{
 			memcpy( rgba, &pal[i * 3], 3 );
 			rgba[3] = 0xFF;
-			memcpy( &uirgba, rgba, sizeof( uirgba ));
+			#if XASH_BIG_ENDIAN
+			uirgba = ((uint)rgba[0] << 24) | ((uint)rgba[1] << 16) | ((uint)rgba[2] << 8) | (uint)rgba[3];
+			#else
+			uirgba = ((uint)rgba[0]) | ((uint)rgba[1] << 8) | ((uint)rgba[2] << 16) | ((uint)rgba[3] << 24);
+			#endif
 			d_table[i] = uirgba;
 		}
 		break;
@@ -308,7 +312,11 @@ static void Image_SetPalette( const byte *pal, uint *d_table )
 			rgba[1] = TextureToGamma( pal[i * 3 + 1] );
 			rgba[2] = TextureToGamma( pal[i * 3 + 2] );
 			rgba[3] = 0xFF;
-			memcpy( &uirgba, rgba, sizeof( uirgba ));
+			#if XASH_BIG_ENDIAN
+			uirgba = ((uint)rgba[0] << 24) | ((uint)rgba[1] << 16) | ((uint)rgba[2] << 8) | (uint)rgba[3];
+			#else
+			uirgba = ((uint)rgba[0]) | ((uint)rgba[1] << 8) | ((uint)rgba[2] << 16) | ((uint)rgba[3] << 24);
+			#endif
 			d_table[i] = uirgba;
 		}
 		break;
@@ -319,7 +327,11 @@ static void Image_SetPalette( const byte *pal, uint *d_table )
 			rgba[1] = pal[766];
 			rgba[2] = pal[767];
 			rgba[3] = i;
-			memcpy( &uirgba, rgba, sizeof( uirgba ));
+			#if XASH_BIG_ENDIAN
+			uirgba = ((uint)rgba[0] << 24) | ((uint)rgba[1] << 16) | ((uint)rgba[2] << 8) | (uint)rgba[3];
+			#else
+			uirgba = ((uint)rgba[0]) | ((uint)rgba[1] << 8) | ((uint)rgba[2] << 16) | ((uint)rgba[3] << 24);
+			#endif
 			d_table[i] = uirgba;
 		}
 		break;
@@ -330,7 +342,11 @@ static void Image_SetPalette( const byte *pal, uint *d_table )
 			rgba[1] = pal[i*3+1];
 			rgba[2] = pal[i*3+2];
 			rgba[3] = 0xFF;
-			memcpy( &uirgba, rgba, sizeof( uirgba ));
+			#if XASH_BIG_ENDIAN
+			uirgba = ((uint)rgba[0] << 24) | ((uint)rgba[1] << 16) | ((uint)rgba[2] << 8) | (uint)rgba[3];
+			#else
+			uirgba = ((uint)rgba[0]) | ((uint)rgba[1] << 8) | ((uint)rgba[2] << 16) | ((uint)rgba[3] << 24);
+			#endif
 			d_table[i] = uirgba;
 		}
 		d_table[255] = 0;
@@ -342,7 +358,11 @@ static void Image_SetPalette( const byte *pal, uint *d_table )
 			rgba[1] = pal[i*4+1];
 			rgba[2] = pal[i*4+2];
 			rgba[3] = pal[i*4+3];
-			memcpy( &uirgba, rgba, sizeof( uirgba ));
+			#if XASH_BIG_ENDIAN
+			uirgba = ((uint)rgba[0] << 24) | ((uint)rgba[1] << 16) | ((uint)rgba[2] << 8) | (uint)rgba[3];
+			#else
+			uirgba = ((uint)rgba[0]) | ((uint)rgba[1] << 8) | ((uint)rgba[2] << 16) | ((uint)rgba[3] << 24);
+			#endif
 			d_table[i] = uirgba;
 		}
 		break;

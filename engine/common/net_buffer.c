@@ -310,6 +310,7 @@ void MSG_WriteUBitLong( sizebuf_t *sb, uint curData, int numbits )
 	uint	iDWord = iCurBit >> 5;	// Mask in a dword.
 	uint32_t	iCurBitMasked;
 	int	nBitsWritten;
+	int iTmpVal;
 
 	Assert( numbits >= 1 && numbits <= 32 );
 
@@ -321,8 +322,10 @@ void MSG_WriteUBitLong( sizebuf_t *sb, uint curData, int numbits )
 	}
 
 	iCurBitMasked = iCurBit & 31;
-	((uint32_t *)sb->pData)[iDWord] &= BitWriteMasks[iCurBitMasked][nBitsLeft-1];
-	((uint32_t *)sb->pData)[iDWord] |= curData << iCurBitMasked;
+	iTmpVal = LittleLong(((uint32_t *)sb->pData)[iDWord]);
+	iTmpVal &= BitWriteMasks[iCurBitMasked][nBitsLeft-1];
+	iTmpVal |= curData << iCurBitMasked;
+	((uint32_t *)sb->pData)[iDWord] = LittleLong(iTmpVal);
 
 	// did it span a dword?
 	nBitsWritten = 32 - iCurBitMasked;
@@ -334,8 +337,10 @@ void MSG_WriteUBitLong( sizebuf_t *sb, uint curData, int numbits )
 		curData >>= nBitsWritten;
 
 		iCurBitMasked = iCurBit & 31;
-		((uint32_t *)sb->pData)[iDWord+1] &= BitWriteMasks[iCurBitMasked][nBitsLeft-1];
-		((uint32_t *)sb->pData)[iDWord+1] |= curData << iCurBitMasked;
+		iTmpVal = LittleLong(((uint32_t *)sb->pData)[iDWord+1]);
+		iTmpVal &= BitWriteMasks[iCurBitMasked][nBitsLeft-1];
+		iTmpVal |= curData << iCurBitMasked;
+		((uint32_t *)sb->pData)[iDWord+1] = LittleLong(iTmpVal);
 	}
 	sb->iCurBit += numbits;
 }
@@ -394,13 +399,17 @@ qboolean MSG_WriteBits( sizebuf_t *sb, const void *pData, int nBits )
 	}
 
 	// read dwords.
+#if XASH_LITTLE_ENDIAN
 	while( nBitsLeft >= 32 )
 	{
-		MSG_WriteUBitLong( sb, *(( uint32_t *)pOut ), 32 );
-
-		pOut += sizeof( uint32_t );
+		MSG_WriteUBitLong( sb, pOut[0], 8 );
+		MSG_WriteUBitLong( sb, pOut[1], 8 );
+		MSG_WriteUBitLong( sb, pOut[2], 8 );
+		MSG_WriteUBitLong( sb, pOut[3], 8 );
+		pOut += 4;
 		nBitsLeft -= 32;
 	}
+#endif
 
 	// read the remaining bytes.
 	while( nBitsLeft >= 8 )
@@ -499,22 +508,33 @@ void MSG_WriteByte( sizebuf_t *sb, int val )
 
 void MSG_WriteShort( sizebuf_t *sb, int val )
 {
-	MSG_WriteSBitLong( sb, val, sizeof( int16_t ) << 3 );
+	uint16_t u = (uint16_t)val;
+	MSG_WriteByte( sb, u & 0xFF );
+	MSG_WriteByte( sb, ( u >> 8 ) & 0xFF );
 }
 
 void MSG_WriteWord( sizebuf_t *sb, int val )
 {
-	MSG_WriteUBitLong( sb, val, sizeof( uint16_t ) << 3 );
+	uint16_t u = (uint16_t)val;
+	MSG_WriteByte( sb, u & 0xFF );
+	MSG_WriteByte( sb, ( u >> 8 ) & 0xFF );
 }
 
 void MSG_WriteLong( sizebuf_t *sb, int val )
 {
-	MSG_WriteSBitLong( sb, val, sizeof( int32_t ) << 3 );
+	uint32_t u = (uint32_t)val;
+	MSG_WriteByte( sb, u & 0xFF );
+	MSG_WriteByte( sb, ( u >> 8 ) & 0xFF );
+	MSG_WriteByte( sb, ( u >> 16 ) & 0xFF );
+	MSG_WriteByte( sb, ( u >> 24 ) & 0xFF );
 }
 
 void MSG_WriteDword( sizebuf_t *sb, uint val )
 {
-	MSG_WriteUBitLong( sb, val, sizeof( uint32_t ) << 3 );
+	MSG_WriteByte( sb, val & 0xFF );
+	MSG_WriteByte( sb, ( val >> 8 ) & 0xFF );
+	MSG_WriteByte( sb, ( val >> 16 ) & 0xFF );
+	MSG_WriteByte( sb, ( val >> 24 ) & 0xFF );
 }
 
 void MSG_WriteFloat( sizebuf_t *sb, float val )
@@ -593,7 +613,7 @@ uint MSG_ReadUBitLong( sizebuf_t *sb, int numbits )
 
 	// Read the current dword.
 	idword1 = sb->iCurBit >> 5;
-	dword1 = ((uint *)sb->pData)[idword1];
+	dword1 = LittleLong(((uint *)sb->pData)[idword1]);
 	dword1 >>= ( sb->iCurBit & 31 );	// get the bits we're interested in.
 
 	sb->iCurBit += numbits;
@@ -608,7 +628,7 @@ uint MSG_ReadUBitLong( sizebuf_t *sb, int numbits )
 	else
 	{
 		int	nExtraBits = sb->iCurBit & 31;
-		uint	dword2 = ((uint *)sb->pData)[idword1+1] & ExtraMasks[nExtraBits];
+		uint	dword2 = LittleLong(((uint *)sb->pData)[idword1+1]) & ExtraMasks[nExtraBits];
 
 		// no need to mask since we hit the end of the dword.
 		// shift the second dword's part into the high bits.
@@ -631,12 +651,17 @@ qboolean MSG_ReadBits( sizebuf_t *sb, void *pOutData, int nBits )
 	}
 
 	// read dwords.
+#if XASH_LITTLE_ENDIAN
 	while( nBitsLeft >= 32 )
 	{
-		*((uint32_t *)pOut) = MSG_ReadUBitLong( sb, 32 );
-		pOut += sizeof( uint32_t );
+		pOut[0] = (byte)MSG_ReadUBitLong( sb, 8 );
+		pOut[1] = (byte)MSG_ReadUBitLong( sb, 8 );
+		pOut[2] = (byte)MSG_ReadUBitLong( sb, 8 );
+		pOut[3] = (byte)MSG_ReadUBitLong( sb, 8 );
+		pOut += 4;
 		nBitsLeft -= 32;
 	}
+#endif
 
 	// read the remaining bytes.
 	while( nBitsLeft >= 8 )
@@ -736,18 +761,16 @@ int MSG_ReadByte( sizebuf_t *sb )
 
 int MSG_ReadShort( sizebuf_t *sb )
 {
-	int alt = sb->iAlternateSign, ret;
-
-	sb->iAlternateSign = 0;
-	ret = MSG_ReadSBitLong( sb, sizeof( int16_t ) << 3 );
-	sb->iAlternateSign = alt;
-
-	return ret;
+	uint16_t lo = (uint16_t)MSG_ReadByte( sb );
+	uint16_t hi = (uint16_t)MSG_ReadByte( sb );
+	return (int16_t)( lo | ( hi << 8 ));
 }
 
 int MSG_ReadWord( sizebuf_t *sb )
 {
-	return MSG_ReadUBitLong( sb, sizeof( uint16_t ) << 3 );
+	uint16_t lo = (uint16_t)MSG_ReadByte( sb );
+	uint16_t hi = (uint16_t)MSG_ReadByte( sb );
+	return (int)( lo | ( hi << 8 ));
 }
 
 float MSG_ReadCoord( sizebuf_t *sb )
@@ -774,18 +797,20 @@ void MSG_ReadVec3Angles( sizebuf_t *sb, vec3_t fa )
 
 int MSG_ReadLong( sizebuf_t *sb )
 {
-	int alt = sb->iAlternateSign, ret;
-
-	sb->iAlternateSign = 0;
-	ret = MSG_ReadSBitLong( sb, sizeof( int32_t ) << 3 );
-	sb->iAlternateSign = alt;
-
-	return ret;
+	uint32_t b0 = (uint32_t)MSG_ReadByte( sb );
+	uint32_t b1 = (uint32_t)MSG_ReadByte( sb );
+	uint32_t b2 = (uint32_t)MSG_ReadByte( sb );
+	uint32_t b3 = (uint32_t)MSG_ReadByte( sb );
+	return (int32_t)( b0 | ( b1 << 8 ) | ( b2 << 16 ) | ( b3 << 24 ));
 }
 
 uint MSG_ReadDword( sizebuf_t *sb )
 {
-	return MSG_ReadUBitLong( sb, sizeof( uint32_t ) << 3 );
+	uint32_t b0 = (uint32_t)MSG_ReadByte( sb );
+	uint32_t b1 = (uint32_t)MSG_ReadByte( sb );
+	uint32_t b2 = (uint32_t)MSG_ReadByte( sb );
+	uint32_t b3 = (uint32_t)MSG_ReadByte( sb );
+	return b0 | ( b1 << 8 ) | ( b2 << 16 ) | ( b3 << 24 );
 }
 
 float MSG_ReadFloat( sizebuf_t *sb )

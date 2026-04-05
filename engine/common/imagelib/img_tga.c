@@ -17,6 +17,17 @@ GNU General Public License for more details.
 #include "xash3d_mathlib.h"
 #include "img_tga.h"
 
+static uint16_t Image_ReadU16LE( const byte *src )
+{
+	return (uint16_t)( src[0] | ( src[1] << 8 ));
+}
+
+static void Image_WriteU16LE( byte *dst, uint16_t value )
+{
+	dst[0] = (byte)( value & 0xFF );
+	dst[1] = (byte)(( value >> 8 ) & 0xFF );
+}
+
 /*
 =============
 Image_LoadTGA
@@ -44,10 +55,10 @@ qboolean Image_LoadTGA( const char *name, const byte *buffer, fs_offset_t filesi
 	targa_header.colormap_index = buf_p[0] + buf_p[1] * 256;		buf_p += 2;
 	targa_header.colormap_length = buf_p[0] + buf_p[1] * 256;		buf_p += 2;
 	targa_header.colormap_size = *buf_p;				buf_p += 1;
-	targa_header.x_origin = *(short *)buf_p;			buf_p += 2;
-	targa_header.y_origin = *(short *)buf_p;			buf_p += 2;
-	targa_header.width = image.width = *(short *)buf_p;		buf_p += 2;
-	targa_header.height = image.height = *(short *)buf_p;		buf_p += 2;
+	targa_header.x_origin = Image_ReadU16LE( buf_p );		buf_p += 2;
+	targa_header.y_origin = Image_ReadU16LE( buf_p );		buf_p += 2;
+	targa_header.width = image.width = Image_ReadU16LE( buf_p );	buf_p += 2;
+	targa_header.height = image.height = Image_ReadU16LE( buf_p );	buf_p += 2;
 	targa_header.pixel_size = *buf_p++;
 	targa_header.attributes = *buf_p++;
 	if( targa_header.id_length != 0 ) buf_p += targa_header.id_length;	// skip TARGA image comment
@@ -283,8 +294,18 @@ qboolean Image_SaveTGA( const char *name, rgbdata_t *pix )
 	}
 
 	out = buffer;
-
-	memcpy( out, &targa_header, sizeof( tga_t ) );
+	out[0] = targa_header.id_length;
+	out[1] = targa_header.colormap_type;
+	out[2] = targa_header.image_type;
+	Image_WriteU16LE( out + 3, targa_header.colormap_index );
+	Image_WriteU16LE( out + 5, targa_header.colormap_length );
+	out[7] = targa_header.colormap_size;
+	Image_WriteU16LE( out + 8, targa_header.x_origin );
+	Image_WriteU16LE( out + 10, targa_header.y_origin );
+	Image_WriteU16LE( out + 12, targa_header.width );
+	Image_WriteU16LE( out + 14, targa_header.height );
+	out[16] = targa_header.pixel_size;
+	out[17] = targa_header.attributes;
 	out += sizeof( tga_t );
 
 	memcpy( out, comment, sizeof( comment ) - 1 );

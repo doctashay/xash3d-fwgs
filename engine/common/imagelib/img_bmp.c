@@ -41,6 +41,21 @@ qboolean Image_LoadBMP( const char *name, const byte *buffer, fs_offset_t filesi
 
 	buf_p = (byte *)buffer;
 	memcpy( &bhdr, buf_p, sizeof( bmp_t ));
+	// BMP headers are always little-endian on disk.
+	bhdr.fileSize = LittleLong( bhdr.fileSize );
+	bhdr.reserved0 = LittleLong( bhdr.reserved0 );
+	bhdr.bitmapDataOffset = LittleLong( bhdr.bitmapDataOffset );
+	bhdr.bitmapHeaderSize = LittleLong( bhdr.bitmapHeaderSize );
+	bhdr.width = LittleLong( bhdr.width );
+	bhdr.height = LittleLong( bhdr.height );
+	bhdr.planes = LittleShort( bhdr.planes );
+	bhdr.bitsPerPixel = LittleShort( bhdr.bitsPerPixel );
+	bhdr.compression = LittleLong( bhdr.compression );
+	bhdr.bitmapDataSize = LittleLong( bhdr.bitmapDataSize );
+	bhdr.hRes = LittleLong( bhdr.hRes );
+	bhdr.vRes = LittleLong( bhdr.vRes );
+	bhdr.colors = LittleLong( bhdr.colors );
+	bhdr.importantColors = LittleLong( bhdr.importantColors );
 	buf_p += BI_FILE_HEADER_SIZE + bhdr.bitmapHeaderSize;
 
 	// bogus file header check
@@ -233,10 +248,11 @@ qboolean Image_LoadBMP( const char *name, const byte *buffer, fs_offset_t filesi
 				palIndex = alpha >> 4;
 				if( load_qfont )
 				{
+					byte qalpha = Q_max( palette[palIndex][3], Q_max( palette[palIndex][0], Q_max( palette[palIndex][1], palette[palIndex][2] )));
 					*pixbuf++ = red = 255;
 					*pixbuf++ = green = 255;
 					*pixbuf++ = blue = 255;
-					*pixbuf++ = palette[palIndex][2];
+					*pixbuf++ = qalpha;
 				}
 				else
 				{
@@ -249,10 +265,11 @@ qboolean Image_LoadBMP( const char *name, const byte *buffer, fs_offset_t filesi
 				palIndex = alpha & 0x0F;
 				if( load_qfont )
 				{
+					byte qalpha = Q_max( palette[palIndex][3], Q_max( palette[palIndex][0], Q_max( palette[palIndex][1], palette[palIndex][2] )));
 					*pixbuf++ = red = 255;
 					*pixbuf++ = green = 255;
 					*pixbuf++ = blue = 255;
-					*pixbuf++ = palette[palIndex][2];
+					*pixbuf++ = qalpha;
 				}
 				else
 				{
@@ -282,7 +299,10 @@ qboolean Image_LoadBMP( const char *name, const byte *buffer, fs_offset_t filesi
 				}
 				break;
 			case 16:
-				shortPixel = *(word *)buf_p, buf_p += 2;
+				// BMP 16bpp is little-endian on disk; do not use native-endian word load.
+				shortPixel = (word)buf_p[0] | ((word)buf_p[1] << 8);
+				buf_p += 2;
+				shortPixel = LittleShort( shortPixel );
 				*pixbuf++ = blue = (shortPixel & ( 31 << 10 )) >> 7;
 				*pixbuf++ = green = (shortPixel & ( 31 << 5 )) >> 2;
 				*pixbuf++ = red = (shortPixel & ( 31 )) << 3;
