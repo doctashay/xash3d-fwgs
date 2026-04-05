@@ -105,8 +105,9 @@ SUBDIRS = [
 	Subproject('3rdparty/MultiEmulator',lambda x: x.env.CLIENT),
 #	Subproject('3rdparty/freevgui',     lambda x: x.env.CLIENT),
 	Subproject('stub/client',           lambda x: x.env.CLIENT),
+	# engine must configure before game_launch: SDL1 + GAME_LAUNCH_NEEDS_SDLMAIN live in env game_launch reads
+	Subproject('engine'),
 	Subproject('game_launch',           lambda x: x.env.LAUNCHER),
-	Subproject('engine'), # keep latest for static linking
 
 	# enabled optionally
 	Subproject('utils/mdldec',     lambda x: x.env.ENABLE_UTILS),
