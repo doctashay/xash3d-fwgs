@@ -20,8 +20,28 @@ def configure(conf):
 
 	conf.define('XASH_DISABLE_MENU_CHANGEGAME', conf.options.DISABLE_MENU_CHANGEGAME)
 
+	# Per-subproject c4che env does not inherit engine's SDL uselib; refresh SDL1 flags here for xash3d compile/link.
+	if conf.env.DEST_OS == 'darwin' and getattr( conf.options, 'SDL12', False ):
+		conf.env.GAME_LAUNCH_NEEDS_SDLMAIN = True
+		try:
+			if not conf.env.SDL1CONFIG:
+				conf.find_program( 'sdl-config', var = 'SDL1CONFIG' )
+			conf.check_cfg( path = conf.env.SDL1CONFIG, args = '--cflags --libs',
+				msg = 'Checking for SDL1.2 (game_launch)', package = '',
+				uselib_store = 'SDL1' )
+		except conf.errors.ConfigurationError:
+			conf.check_cfg( package = 'sdl', args = '--cflags --libs', uselib_store = 'SDL1' )
+
 def build(bld):
 	source = ['game.cpp']
+	use = ['sdk_includes', 'DL', 'USER32', 'SHELL32', 'werror']
+	defines = []
+
+	# macOS + SDL1: link libSDLmain into this executable (not into libxash.dylib); see engine wscript SDL1_ENGINE.
+	# Use GAME_LAUNCH_NEEDS_SDLMAIN: game_launch builds before engine in waf SUBDIRS order, so XASH_SDL can be unset here.
+	if getattr( bld.env, 'GAME_LAUNCH_NEEDS_SDLMAIN', False ):
+		use.append('SDL1')
+		defines.append('XASH_GAME_LAUNCH_SDLMAIN=1')
 
 	if bld.env.DEST_OS == 'win32':
 		source += ['game.rc']
@@ -32,7 +52,8 @@ def build(bld):
 
 	bld.program(source = source,
 		target   = 'xash3d', # hl.exe
-		use      = 'sdk_includes DL USER32 SHELL32 werror',
+		use      = use,
+		defines  = defines,
 		rpath    = bld.env.DEFAULT_RPATH,
 		install_path = bld.env.BINDIR,
 		subsystem = bld.env.MSVC_SUBSYSTEM

@@ -1353,6 +1353,13 @@ void CL_RegisterUserMessage( sizebuf_t *msg, connprotocol_t proto )
 	else
 	{
 		size = MSG_ReadWord( msg );
+		// Big-endian safeguard: some user-message registrations may still arrive with swapped 16-bit size.
+		if( size > MAX_USERMSG_LENGTH && size != UINT16_MAX )
+		{
+			const int swapped = (( size & 0xFF ) << 8 ) | (( size >> 8 ) & 0xFF );
+			if( swapped >= -1 && swapped <= MAX_USERMSG_LENGTH )
+				size = swapped;
+		}
 		if( size == UINT16_MAX )
 			size = -1;
 	}
@@ -1724,6 +1731,7 @@ void CL_RegisterResources( sizebuf_t *msg, connprotocol_t proto )
 
 			// load tempent sprites (glowshell, muzzleflashes etc)
 			CL_LoadClientSprites ();
+			Con_DPrintf( "CL_RegisterResources: client sprites loaded\n" );
 
 			// invalidate all decal indexes
 			memset( cl.decal_index, 0, sizeof( cl.decal_index ));
@@ -1731,17 +1739,22 @@ void CL_RegisterResources( sizebuf_t *msg, connprotocol_t proto )
 			cl.audio_prepped = true;
 
 			CL_ClearWorld ();
+			Con_DPrintf( "CL_RegisterResources: world cleared\n" );
 
 			// load skybox
 			R_SetupSky( clgame.movevars.skyName );
+			Con_DPrintf( "CL_RegisterResources: sky setup done\n" );
 
 			// tell rendering system we have a new set of models.
 			ref.dllFuncs.R_NewMap ();
+			Con_DPrintf( "CL_RegisterResources: R_NewMap done\n" );
 
 			// check if this map must start from dark screen
 			CL_StartDark ();
+			Con_DPrintf( "CL_RegisterResources: dark-start done\n" );
 
 			CL_SetupOverviewParams();
+			Con_DPrintf( "CL_RegisterResources: overview params done\n" );
 
 			// release unused SpriteTextures
 			for( i = 1, mod = clgame.sprites; i < MAX_CLIENT_SPRITES; i++, mod++ )
@@ -1751,6 +1764,7 @@ void CL_RegisterResources( sizebuf_t *msg, connprotocol_t proto )
 			}
 
 			Mod_FreeUnused ();
+			Con_DPrintf( "CL_RegisterResources: free unused models done\n" );
 
 			if( host_developer.value <= DEV_NONE )
 				Con_ClearNotify(); // clear any lines of console text

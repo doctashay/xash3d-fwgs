@@ -124,9 +124,41 @@ def configure(conf):
 		elif conf.env.DEST_OS == 'linux' and conf.options.FBDEV_SW:
 			conf.check_cc(lib='asound')
 		elif conf.options.SDL12: # TODO: move to sdl2.py
-			conf.check_cfg(package='sdl', args='--cflags --libs', uselib_store='SDL1')
+			# Prefer sdl-config from libsdl12. On some systems pkg-config "sdl"
+			# may resolve to SDL2 compatibility metadata.
+			try:
+				if not conf.env.SDL1CONFIG:
+					conf.find_program('sdl-config', var='SDL1CONFIG')
+				conf.check_cfg(path=conf.env.SDL1CONFIG, args='--cflags --libs',
+					msg='Checking for SDL1.2 (sdl-config)', package='',
+					uselib_store='SDL1')
+			except conf.errors.ConfigurationError:
+				conf.check_cfg(package='sdl', args='--cflags --libs', uselib_store='SDL1')
 			conf.env.XASH_SDL = 1
 			conf.env.HAVE_SDL1 = True
+			# macOS: libSDLmain must be linked into the small game_launch Mach-O, not libxash.dylib.
+			# Otherwise Cocoa never bootstraps and the Dock bounces forever (real main is in game.cpp).
+			if conf.env.DEST_OS == 'darwin':
+				for k in list( conf.env.keys( )):
+					if not isinstance( k, str ) or not k.endswith( '_SDL1' ):
+						continue
+					dst = k.replace( '_SDL1', '_SDL1_ENGINE' )
+					v = conf.env[k]
+					if isinstance( v, list ):
+						conf.env[dst] = v[:]
+					elif isinstance( v, tuple ):
+						conf.env[dst] = list( v )
+					else:
+						conf.env[dst] = v
+				for k in list( conf.env.keys( )):
+					if not isinstance( k, str ) or not k.endswith( '_SDL1_ENGINE' ):
+						continue
+					v = conf.env[k]
+					if isinstance( v, list ):
+						while 'SDLmain' in v:
+							v.remove( 'SDLmain' )
+				# game_launch builds before engine in SUBDIRS; XASH_SDL may not be visible there yet.
+				conf.env.GAME_LAUNCH_NEEDS_SDLMAIN = True
 		else:
 			find_sdl(conf)
 
@@ -275,7 +307,10 @@ def build(bld):
 	if bld.env.CLIENT:
 		defines = []
 		if bld.env.XASH_SDL:
-			libs += ['SDL%d' % bld.env.XASH_SDL]
+			if bld.env.LAUNCHER and bld.env.DEST_OS == 'darwin' and bld.env.XASH_SDL == 1:
+				libs += ['SDL1_ENGINE']
+			else:
+				libs += ['SDL%d' % bld.env.XASH_SDL]
 			source += bld.path.ant_glob(['platform/sdl%d/*.c' % bld.env.XASH_SDL])
 			defines += ['XASH_SDL=%d' % bld.env.XASH_SDL]
 

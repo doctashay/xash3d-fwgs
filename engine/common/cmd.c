@@ -520,6 +520,7 @@ struct cmd_s
 int           cmd_argc;
 const char   *cmd_args = NULL;
 char         *cmd_argv[MAX_CMD_TOKENS];
+static char   cmd_argv_storage[MAX_CMD_TOKENS][MAX_CMD_LINE];
 static cmd_t *cmd_functions;			// possible commands to execute
 /*
 ===========================
@@ -581,11 +582,6 @@ will point into this temporary buffer.
 void Cmd_TokenizeString( const char *text )
 {
 	char	cmd_token[MAX_CMD_BUFFER];
-	int	i;
-
-	// clear the args from the last string
-	for( i = 0; i < cmd_argc; i++ )
-		Mem_Free( cmd_argv[i] );
 
 	cmd_argc = 0; // clear previous args
 	cmd_args = NULL;
@@ -619,7 +615,8 @@ void Cmd_TokenizeString( const char *text )
 
 		if( cmd_argc < MAX_CMD_TOKENS )
 		{
-			cmd_argv[cmd_argc] = copystringpool( cmd_pool, cmd_token );
+			Q_strncpy( cmd_argv_storage[cmd_argc], cmd_token, sizeof( cmd_argv_storage[cmd_argc] ));
+			cmd_argv[cmd_argc] = cmd_argv_storage[cmd_argc];
 			cmd_argc++;
 		}
 	}

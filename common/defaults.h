@@ -137,6 +137,9 @@ Default build-depended cvar and constant values
 	// set up windowed by default on Windows to avoid problems with
 	// Xbox Game Bar
 	#define DEFAULT_FULLSCREEN   "0"
+#elif XASH_APPLE
+	// SDL1 + Quartz: default borderless/fullscreen uses flags that break CGSWindow on 10.4–10.5.
+	#define DEFAULT_FULLSCREEN   "0"
 #elif XASH_NSWITCH
 	#define DEFAULT_TOUCH_ENABLE "1"
 	#define DEFAULT_M_IGNORE     "1"

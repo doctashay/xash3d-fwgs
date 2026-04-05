@@ -1111,6 +1111,11 @@ void CL_SendGoldSrcConnectPacket( netadr_t adr, int challenge, const void *ticke
 	Con_Printf( "Trying to connect with GoldSrc 48 protocol\n" );
 }
 
+static qboolean CL_IsLocalHostAddress( const char *servername )
+{
+	return !Q_strnicmp( servername, "localhost", 9 ) || !Q_strncmp( servername, "127.0.0.1", 9 );
+}
+
 /*
 =======================
 CL_SendConnectPacket
@@ -1128,7 +1133,12 @@ static void CL_SendConnectPacket( connprotocol_t proto, int challenge )
 
 	protinfo[0] = 0;
 
-	if( !NET_StringToAdr( cls.servername, &adr ))
+	// Local listen server should always use in-process loopback transport.
+	if( SV_Active() && CL_IsLocalHostAddress( cls.servername ) && NET_NetadrType( &cls.serveradr ) == NA_LOOPBACK )
+	{
+		adr = cls.serveradr;
+	}
+	else if( !NET_StringToAdr( cls.servername, &adr ))
 	{
 		Con_Printf( "%s: bad server address\n", __func__ );
 		cls.connect_time = 0;
@@ -1267,14 +1277,26 @@ static void CL_CheckForResend( void )
 	// if the local server is running and we aren't then connect
 	if( cls.state == ca_disconnected && SV_Active( ))
 	{
+		netadr_t local_adr = { 0 };
+
 		cls.signon = 0;
 		cls.state = ca_connecting;
 		Q_strncpy( cls.servername, "localhost", sizeof( cls.servername ));
 		NET_NetadrSetType( &cls.serveradr, NA_LOOPBACK );
 		cls.legacymode = PROTO_CURRENT;
+		cls.connect_retry = 0;
+		cls.broker_wait = false;
+		cls.bandwidth_test.started = false;
+		cls.bandwidth_test.failed = false;
+		cls.bandwidth_test.passed = false;
 
-		// we don't need a challenge on the localhost
-		CL_SendConnectPacket( PROTO_CURRENT, 0 );
+		local_adr = cls.serveradr;
+		if( local_adr.port == 0 )
+			local_adr.port = MSG_BigShort( PORT_SERVER );
+
+		cls.serveradr = local_adr;
+		cls.connect_time = host.realtime;
+		CL_SendGetChallenge( local_adr );
 		return;
 	}
 
@@ -1295,7 +1317,15 @@ static void CL_CheckForResend( void )
 	if(( host.realtime - cls.connect_time ) < resend_time )
 		return;
 
-	res = NET_StringToAdrNB( cls.servername, &adr, false );
+	if( SV_Active() && CL_IsLocalHostAddress( cls.servername ) && NET_NetadrType( &cls.serveradr ) == NA_LOOPBACK )
+	{
+		adr = cls.serveradr;
+		res = NET_EAI_OK;
+	}
+	else
+	{
+		res = NET_StringToAdrNB( cls.servername, &adr, false );
+	}
 
 	if( res == NET_EAI_NONAME )
 	{

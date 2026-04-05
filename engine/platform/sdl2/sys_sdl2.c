@@ -91,9 +91,30 @@ void SDLash_Init( const char *basedir )
 	if( path != NULL )
 	{
 		char buf[MAX_VA_STRING];
+		SDL_RWops *f;
 
-		Q_snprintf( buf, sizeof( buf ), "%s%s/extras.pk3", path, basedir );
-		setenv( "XASH3D_EXTRAS_PAK1", buf, true );
+		// Respect an existing override (e.g. run script can point to extras.pak).
+		if( !getenv( "XASH3D_EXTRAS_PAK1" ))
+		{
+			Q_snprintf( buf, sizeof( buf ), "%s%s/extras.pk3", path, basedir );
+			f = SDL_RWFromFile( buf, "rb" );
+			if( f )
+			{
+				SDL_RWclose( f );
+				setenv( "XASH3D_EXTRAS_PAK1", buf, true );
+			}
+			else
+			{
+				// Fallback to legacy extras.pak used by xash-extras releases.
+				Q_snprintf( buf, sizeof( buf ), "%s%s/extras.pak", path, basedir );
+				f = SDL_RWFromFile( buf, "rb" );
+				if( f )
+				{
+					SDL_RWclose( f );
+					setenv( "XASH3D_EXTRAS_PAK1", buf, true );
+				}
+			}
+		}
 	}
 #endif
 

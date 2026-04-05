@@ -1070,7 +1070,8 @@ static void EntityPatchRead( SAVERESTOREDATA *pSaveData, const char *level )
 	for( i = 0; i < size; i++ )
 	{
 		FS_Read( pFile, &entityId, sizeof( int ));
-		pSaveData->pTable[entityId].flags = FENTTABLE_REMOVED;
+		if( entityId >= 0 && entityId < pSaveData->tableCount )
+			pSaveData->pTable[entityId].flags = FENTTABLE_REMOVED;
 	}
 
 	FS_Close( pFile );
@@ -1211,7 +1212,13 @@ static qboolean SaveClientState( SAVERESTOREDATA *pSaveData, const char *level, 
 
 		if( !changelevel ) // sounds won't going across transition
 		{
+#if XASH_BIG_ENDIAN
+			// Keep restore deterministic on big-endian for transition/load paths.
+			// Dynamic channel snapshots store raw doubles and are fragile across endian assumptions.
+			header.soundCount = 0;
+#else
 			header.soundCount = S_GetCurrentDynamicSounds( soundInfo, MAX_CHANNELS );
+#endif
 
 			// music not reqiured to save position: it's just continue playing on a next level
 			S_StreamGetCurrentState(
@@ -1340,6 +1347,11 @@ static void LoadClientState( SAVERESTOREDATA *pSaveData, const char *level, qboo
 	// Read the client header
 	svgame.dllFuncs.pfnSaveReadFields( pSaveData, "ClientHeader", &header, gSaveClient, ARRAYSIZE( gSaveClient ));
 
+	// Guard against corrupted or endian-misread counters to avoid post-load overruns.
+	header.decalCount = bound( 0, header.decalCount, MAX_RENDER_DECALS * 2 );
+	header.entityCount = bound( 0, header.entityCount, MAX_STATIC_ENTITIES );
+	header.soundCount = bound( 0, header.soundCount, MAX_CHANNELS );
+
 	// restore decals
 	for( i = 0; i < header.decalCount; i++ )
 	{
@@ -1381,7 +1393,13 @@ static void LoadClientState( SAVERESTOREDATA *pSaveData, const char *level, qboo
 	if( !adjacent )
 	{
 		// restore camera view here
-		edict_t	*pent = pSaveData->pTable[bound( 0, (word)header.viewentity, pSaveData->tableCount )].pent;
+		edict_t	*pent = NULL;
+		int	viewIndex = 0;
+		if( pSaveData->tableCount > 0 )
+		{
+			viewIndex = bound( 0, (int)header.viewentity, pSaveData->tableCount - 1 );
+			pent = pSaveData->pTable[viewIndex].pent;
+		}
 
 		if( !COM_StringEmpty( header.introTrack ))
 		{
@@ -2388,9 +2406,26 @@ int GAME_EXPORT SV_GetSaveComment( const char *savename, char *comment )
 	else pTokenList = NULL;
 
 	// short, short (size, index of field name)
-	nFieldSize = *(short *)pData;
-	pData += sizeof( short );
-	pFieldName = pTokenList[*(short *)pData];
+	{
+		short rawFieldSize = 0;
+		short rawFieldName = 0;
+
+		memcpy( &rawFieldSize, pData, sizeof( rawFieldSize ));
+		nFieldSize = LittleShort( rawFieldSize );
+		pData += sizeof( short );
+
+		memcpy( &rawFieldName, pData, sizeof( rawFieldName ));
+		rawFieldName = LittleShort( rawFieldName );
+		if( rawFieldName < 0 || rawFieldName >= tokenCount || !pTokenList )
+		{
+			Q_strncpy( comment, "<corrupted hashtable>", MAX_STRING );
+			if( pTokenList ) Mem_Free( pTokenList );
+			if( pSaveData ) Mem_Free( pSaveData );
+			FS_Close( f );
+			return 0;
+		}
+		pFieldName = pTokenList[rawFieldName];
+	}
 
 	if( Q_stricmp( pFieldName, "GameHeader" ))
 	{
@@ -2403,7 +2438,11 @@ int GAME_EXPORT SV_GetSaveComment( const char *savename, char *comment )
 
 	// int (fieldcount)
 	pData += sizeof( short );
-	nNumberOfFields = (int)*pData;
+	{
+		int rawFieldCount = 0;
+		memcpy( &rawFieldCount, pData, sizeof( rawFieldCount ));
+		nNumberOfFields = LittleLong( rawFieldCount );
+	}
 	pData += nFieldSize;
 
 	// each field is a short (size), short (index of name), binary string of "size" bytes (data)
@@ -2414,11 +2453,25 @@ int GAME_EXPORT SV_GetSaveComment( const char *savename, char *comment )
 		// Size
 		// szName
 		// Actual Data
-		nFieldSize = *(short *)pData;
-		pData += sizeof( short );
+		{
+			short rawFieldSize = 0;
+			short rawFieldName = 0;
 
-		pFieldName = pTokenList[*(short *)pData];
-		pData += sizeof( short );
+			memcpy( &rawFieldSize, pData, sizeof( rawFieldSize ));
+			nFieldSize = LittleShort( rawFieldSize );
+			pData += sizeof( short );
+
+			memcpy( &rawFieldName, pData, sizeof( rawFieldName ));
+			rawFieldName = LittleShort( rawFieldName );
+			pData += sizeof( short );
+
+			if( rawFieldName < 0 || rawFieldName >= tokenCount || !pTokenList )
+			{
+				Q_strncpy( comment, "<corrupted hashtable>", MAX_STRING );
+				break;
+			}
+			pFieldName = pTokenList[rawFieldName];
+		}
 
 		size = Q_min( nFieldSize, MAX_STRING );
 

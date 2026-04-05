@@ -16,6 +16,10 @@ GNU General Public License for more details.
 #include "port.h"
 #include "build.h"
 
+#if XASH_GAME_LAUNCH_SDLMAIN
+#include <SDL.h> // macOS SDL1: renames main->SDL_main; real Cocoa entry is in libSDLmain
+#endif
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>

@@ -1648,13 +1648,31 @@ static void FS_ValidateDirectories( const char *path, qboolean *has_base_dir, qb
 
 	for( i = 0; i < dirs.numstrings; i++ )
 	{
-		if( !FS_SysFolderExists( dirs.strings[i] ))
+		const char *entry = dirs.strings[i];
+		char fullpath[MAX_SYSPATH];
+		const char *name = entry;
+		const char *check_path = entry;
+
+		if( entry[0] != '/' && !( entry[0] && entry[1] == ':' ))
+		{
+			if( Q_snprintf( fullpath, sizeof( fullpath ), "%s/%s", path, entry ) > 0 )
+				check_path = fullpath;
+		}
+
+		if( !FS_SysFolderExists( check_path ))
 			continue;
 
-		if( !Q_stricmp( fs_basedir, dirs.strings[i] ))
+		// listdirectory() can return absolute entries for absolute paths.
+		// Compare both the full entry and basename to handle rodir scans.
+		if( Q_strrchr( name, '/' ))
+			name = Q_strrchr( name, '/' ) + 1;
+		else if( Q_strrchr( name, '\\' ))
+			name = Q_strrchr( name, '\\' ) + 1;
+
+		if( !Q_stricmp( fs_basedir, entry ) || !Q_stricmp( fs_basedir, name ))
 			*has_base_dir = true;
 
-		if( !Q_stricmp( fs_gamedir, dirs.strings[i] ))
+		if( !Q_stricmp( fs_gamedir, entry ) || !Q_stricmp( fs_gamedir, name ))
 			*has_game_dir = true;
 
 		if( *has_base_dir && *has_game_dir )

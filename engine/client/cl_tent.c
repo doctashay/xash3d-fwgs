@@ -1900,10 +1900,28 @@ void CL_ParseTempEntity( sizebuf_t *msg, connprotocol_t proto )
 	if( proto != PROTO_GOLDSRC )
 	{
 		iSize = MSG_ReadWord( msg );
-
-		// this will probably be fatal anyway
+		// Big-endian safeguard: recover swapped 16-bit TE payload lengths.
 		if( iSize > sizeof( msg_data ))
-			Con_Printf( S_ERROR "%s: Temp buffer overflow!\n", __func__ );
+		{
+			const int swapped = (( iSize & 0xFF ) << 8 ) | (( iSize >> 8 ) & 0xFF );
+			if( swapped >= 0 && swapped <= sizeof( msg_data ))
+				iSize = swapped;
+		}
+
+		// Keep parser synchronized; if payload is too large, discard it safely.
+		if( iSize < 0 || iSize > MSG_GetNumBytesLeft( msg ))
+		{
+			Con_Printf( S_ERROR "%s: Temp buffer overflow (size=%d, left=%d)\n", __func__, iSize, MSG_GetNumBytesLeft( msg ));
+			return;
+		}
+		else if( iSize > sizeof( msg_data ))
+		{
+			int i;
+			Con_Printf( S_ERROR "%s: Temp buffer overflow (size=%d, left=%d)\n", __func__, iSize, MSG_GetNumBytesLeft( msg ));
+			for( i = 0; i < iSize; i++ )
+				MSG_ReadByte( msg );
+			return;
+		}
 
 		// parse user message into buffer
 		MSG_ReadBytes( msg, msg_data, iSize );
