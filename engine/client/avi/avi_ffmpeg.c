@@ -478,38 +478,38 @@ void AVI_OpenVideo( movie_state_t *Avi, const char *filename, qboolean load_audi
 	if(( ret = pavformat_open_input( &Avi->fmt_ctx, filename, NULL, NULL )) < 0 )
 	{
 		AVI_SpewAvError( quiet, "avformat_open_input", ret );
-		return;
+		goto fail;
 	}
 
 	if(( ret = pavformat_find_stream_info( Avi->fmt_ctx, NULL )) < 0 )
 	{
 		AVI_SpewAvError( quiet, "avformat_find_stream_info", ret );
-		return;
+		goto fail;
 	}
 
 	if( !( Avi->pkt = pav_packet_alloc( )))
 	{
 		AVI_SpewAvError( quiet, "av_packet_alloc", 0 );
-		return;
+		goto fail;
 	}
 
 	if( !( Avi->vframe = pav_frame_alloc( )))
 	{
 		AVI_SpewAvError( quiet, "av_frame_alloc (video)", 0 );
-		return;
+		goto fail;
 	}
 
 	if( !( Avi->vframe_copy = pav_frame_alloc( )))
 	{
 		AVI_SpewAvError( quiet, "av_frame_alloc (video)", 0 );
-		return;
+		goto fail;
 	}
 
 
 	Avi->video_stream = AVI_OpenCodecContext( &Avi->video_ctx, Avi->fmt_ctx, AVMEDIA_TYPE_VIDEO, quiet );
 
 	if( Avi->video_stream < 0 )
-		return;
+		goto fail;
 
 	Avi->xres     = Avi->video_ctx->width;
 	Avi->yres     = Avi->video_ctx->height;
@@ -519,17 +519,18 @@ void AVI_OpenVideo( movie_state_t *Avi, const char *filename, qboolean load_audi
 	Avi->attn     = ATTN_NONE;
 	Avi->volume   = 255;
 
+	// The GL raw-frame upload path consumes movie frames as BGRA.
 	if( !( Avi->sws_ctx = psws_getContext( Avi->xres, Avi->yres, Avi->pix_fmt,
-		Avi->xres, Avi->yres, AV_PIX_FMT_BGR0, SWS_POINT, NULL, NULL, NULL )))
+		Avi->xres, Avi->yres, AV_PIX_FMT_BGRA, SWS_POINT, NULL, NULL, NULL )))
 	{
 		AVI_SpewAvError( quiet, "sws_getContext", 0 );
-		return;
+		goto fail;
 	}
 
-	if(( ret = pav_image_alloc( dst, dst_linesize, Avi->xres, Avi->yres, AV_PIX_FMT_BGR0, 1 )) < 0 )
+	if(( ret = pav_image_alloc( dst, dst_linesize, Avi->xres, Avi->yres, AV_PIX_FMT_BGRA, 1 )) < 0 )
 	{
 		AVI_SpewAvError( quiet, "av_image_alloc", ret );
-		return;
+		goto fail;
 	}
 
 	Avi->dst = dst[0];
@@ -540,59 +541,62 @@ void AVI_OpenVideo( movie_state_t *Avi, const char *filename, qboolean load_audi
 		if( !( Avi->aframe = pav_frame_alloc( )))
 		{
 			AVI_SpewAvError( quiet, "av_frame_alloc (audio)", 0 );
-			return;
+			goto fail;
 		}
 
 		Avi->audio_stream = AVI_OpenCodecContext( &Avi->audio_ctx, Avi->fmt_ctx, AVMEDIA_TYPE_AUDIO, quiet );
 
 		// audio stream was requested but it wasn't found
 		if( Avi->audio_stream < 0 )
-			return;
+			goto fail;
 
-		Avi->channels = Q_min( Avi->audio_ctx->ch_layout.nb_channels, 2 );
+		Avi->channels = Q_min( PAV_CODEC_CHANNELS( Avi->audio_ctx ), 2 );
 		if( Avi->audio_ctx->sample_fmt == AV_SAMPLE_FMT_U8 || Avi->audio_ctx->sample_fmt == AV_SAMPLE_FMT_U8P )
 			Avi->s_fmt = AV_SAMPLE_FMT_U8;
 		else Avi->s_fmt = AV_SAMPLE_FMT_S16;
 		Avi->rate = Avi->audio_ctx->sample_rate;
 
-		if(( ret = pswr_alloc_set_opts2( &Avi->swr_ctx, &Avi->audio_ctx->ch_layout, Avi->s_fmt, Avi->rate,
-			&Avi->audio_ctx->ch_layout, Avi->audio_ctx->sample_fmt, Avi->audio_ctx->sample_rate, 0, 0 )) < 0 )
+		if(( ret = pswr_alloc_set_opts_compat( &Avi->swr_ctx, Avi->audio_ctx, Avi->s_fmt, Avi->rate )) < 0 )
 		{
-			AVI_SpewAvError( quiet, "swr_alloc_set_opts2", ret );
-			return;
+			AVI_SpewAvError( quiet, "swr_alloc_set_opts", ret );
+			goto fail;
 		}
 
 		if(( ret = pswr_init( Avi->swr_ctx )) < 0 )
 		{
 			AVI_SpewAvError( quiet, "swr_init", ret );
-			return;
+			goto fail;
 		}
 	}
 
 	Avi->active = true;
+	return;
+
+fail:
+	AVI_CloseVideo( Avi );
 }
 
 void AVI_CloseVideo( movie_state_t *Avi )
 {
-	if( Avi->active )
-	{
-		if( Avi->cached_audio )
-			Mem_Free( Avi->cached_audio );
+	if( !Avi )
+		return;
 
-		pswr_free( &Avi->swr_ctx );
-		pavcodec_free_context( &Avi->audio_ctx );
-		pav_frame_free( &Avi->aframe );
+	if( Avi->cached_audio )
+		Mem_Free( Avi->cached_audio );
 
+	pswr_free( &Avi->swr_ctx );
+	pavcodec_free_context( &Avi->audio_ctx );
+	pav_frame_free( &Avi->aframe );
+
+	if( Avi->dst )
 		pav_free( Avi->dst );
-		psws_freeContext( Avi->sws_ctx );
-		pavcodec_free_context( &Avi->video_ctx );
-		pav_frame_free( &Avi->vframe );
-		pav_frame_free( &Avi->vframe_copy );
+	psws_freeContext( Avi->sws_ctx );
+	pavcodec_free_context( &Avi->video_ctx );
+	pav_frame_free( &Avi->vframe );
+	pav_frame_free( &Avi->vframe_copy );
 
-		pav_packet_free( &Avi->pkt );
-
-		pavformat_close_input( &Avi->fmt_ctx );
-	}
+	pav_packet_free( &Avi->pkt );
+	pavformat_close_input( &Avi->fmt_ctx );
 
 	memset( Avi, 0, sizeof( *Avi ));
 }
@@ -665,6 +669,8 @@ static dll_info_t libavutil_info =
 {
 #if XASH_WIN32
 	.name = "avutil-" S( SUPPORTED_AVU_VERSION_MAJOR ) ".dll",
+#elif XASH_DARWIN
+	.name = "libavutil." S( SUPPORTED_AVU_VERSION_MAJOR ) ".dylib",
 #else
 	.name = "libavutil.so." S( SUPPORTED_AVU_VERSION_MAJOR ),
 #endif
@@ -676,6 +682,8 @@ static dll_info_t libavformat_info =
 {
 #if XASH_WIN32
 	.name = "avformat-" S( SUPPORTED_AVF_VERSION_MAJOR ) ".dll",
+#elif XASH_DARWIN
+	.name = "libavformat." S( SUPPORTED_AVF_VERSION_MAJOR ) ".dylib",
 #else
 	.name = "libavformat.so." S( SUPPORTED_AVF_VERSION_MAJOR ),
 #endif
@@ -687,6 +695,8 @@ static dll_info_t libavcodec_info =
 {
 #if XASH_WIN32
 	.name = "avcodec-" S( SUPPORTED_AVC_VERSION_MAJOR ) ".dll",
+#elif XASH_DARWIN
+	.name = "libavcodec." S( SUPPORTED_AVC_VERSION_MAJOR ) ".dylib",
 #else
 	.name = "libavcodec.so." S( SUPPORTED_AVC_VERSION_MAJOR ),
 #endif
@@ -698,6 +708,8 @@ static dll_info_t libswresample_info =
 {
 #if XASH_WIN32
 	.name = "swresample-" S( SUPPORTED_SWR_VERSION_MAJOR ) ".dll",
+#elif XASH_DARWIN
+	.name = "libswresample." S( SUPPORTED_SWR_VERSION_MAJOR ) ".dylib",
 #else
 	.name = "libswresample.so." S( SUPPORTED_SWR_VERSION_MAJOR ),
 #endif
@@ -709,6 +721,8 @@ static dll_info_t libswscale_info =
 {
 #if XASH_WIN32
 	.name = "swscale-" S( SUPPORTED_SWS_VERSION_MAJOR ) ".dll",
+#elif XASH_DARWIN
+	.name = "libswscale." S( SUPPORTED_SWS_VERSION_MAJOR ) ".dylib",
 #else
 	.name = "libswscale.so." S( SUPPORTED_SWS_VERSION_MAJOR ),
 #endif
@@ -897,15 +911,21 @@ qboolean AVI_Initailize( void )
 	}
 
 	if( !AVI_LoadFFmpeg( ))
+	{
+		Con_Printf( S_ERROR "AVI: Failed to load FFmpeg libraries\n" );
 		return false;
+	}
 
 	if( !AVI_ValidateFFmpegVersion( ))
+	{
+		AVI_UnloadFFmpeg();
 		return false;
+	}
 
 	avi_initialized = true;
 	avi_mempool = Mem_AllocPool( "AVI Zone" );
 
-	return false;
+	return true;
 }
 
 void AVI_Shutdown( void )
