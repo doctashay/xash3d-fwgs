@@ -361,7 +361,7 @@ qboolean Image_SaveBMP( const char *name, rgbdata_t *pix )
 	dword		biTrueWidth;
 	int		pixel_size;
 	int		i, x, y;
-	bmp_t	hdr;
+	bmp_t	hdr, disk_hdr;
 
 	if( FS_FileExists( name, false ) && !Image_CheckFlag( IL_ALLOW_OVERWRITE ) )
 		return false; // already existed
@@ -416,7 +416,24 @@ qboolean Image_SaveBMP( const char *name, rgbdata_t *pix )
 	hdr.colors = ( pixel_size == 1 ) ? 256 : 0;
 	hdr.importantColors = 0;
 
-	FS_Write( pfile, &hdr, sizeof( bmp_t ));
+	// BMP headers are always little-endian on disk.
+	disk_hdr = hdr;
+	disk_hdr.fileSize = LittleLong( disk_hdr.fileSize );
+	disk_hdr.reserved0 = LittleLong( disk_hdr.reserved0 );
+	disk_hdr.bitmapDataOffset = LittleLong( disk_hdr.bitmapDataOffset );
+	disk_hdr.bitmapHeaderSize = LittleLong( disk_hdr.bitmapHeaderSize );
+	disk_hdr.width = LittleLong( disk_hdr.width );
+	disk_hdr.height = LittleLong( disk_hdr.height );
+	disk_hdr.planes = LittleShort( disk_hdr.planes );
+	disk_hdr.bitsPerPixel = LittleShort( disk_hdr.bitsPerPixel );
+	disk_hdr.compression = LittleLong( disk_hdr.compression );
+	disk_hdr.bitmapDataSize = LittleLong( disk_hdr.bitmapDataSize );
+	disk_hdr.hRes = LittleLong( disk_hdr.hRes );
+	disk_hdr.vRes = LittleLong( disk_hdr.vRes );
+	disk_hdr.colors = LittleLong( disk_hdr.colors );
+	disk_hdr.importantColors = LittleLong( disk_hdr.importantColors );
+
+	FS_Write( pfile, &disk_hdr, sizeof( bmp_t ));
 
 	pbBmpBits = Mem_Malloc( host.imagepool, cbBmpBits );
 

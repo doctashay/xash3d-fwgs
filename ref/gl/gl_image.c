@@ -2033,19 +2033,37 @@ static void GL_CreateInternalTextures( void )
 	// white texture
 	pic = GL_FakeImage( 4, 4, 1, IMAGE_HAS_COLOR );
 	for( x = 0; x < 16; x++ )
-		((uint *)pic->buffer)[x] = 0xFFFFFFFF;
+	{
+		byte *pixel = pic->buffer + x * 4;
+		pixel[0] = 255;
+		pixel[1] = 255;
+		pixel[2] = 255;
+		pixel[3] = 255;
+	}
 	tr.whiteTexture = GL_LoadTextureInternal( REF_WHITE_TEXTURE, pic, TF_COLORMAP );
 
 	// gray texture
 	pic = GL_FakeImage( 4, 4, 1, IMAGE_HAS_COLOR );
 	for( x = 0; x < 16; x++ )
-		((uint *)pic->buffer)[x] = 0xFF7F7F7F;
+	{
+		byte *pixel = pic->buffer + x * 4;
+		pixel[0] = 127;
+		pixel[1] = 127;
+		pixel[2] = 127;
+		pixel[3] = 255;
+	}
 	tr.grayTexture = GL_LoadTextureInternal( REF_GRAY_TEXTURE, pic, TF_COLORMAP );
 
 	// black texture
 	pic = GL_FakeImage( 4, 4, 1, IMAGE_HAS_COLOR );
 	for( x = 0; x < 16; x++ )
-		((uint *)pic->buffer)[x] = 0xFF000000;
+	{
+		byte *pixel = pic->buffer + x * 4;
+		pixel[0] = 0;
+		pixel[1] = 0;
+		pixel[2] = 0;
+		pixel[3] = 255;
+	}
 	tr.blackTexture = GL_LoadTextureInternal( REF_BLACK_TEXTURE, pic, TF_COLORMAP );
 
 	// cinematic dummy
