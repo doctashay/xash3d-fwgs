@@ -111,6 +111,14 @@ void Linux_SetTimer( float time );
 int Linux_GetProcessID( void );
 #endif
 
+#if XASH_APPLE && !XASH_IOS && XASH_DARWIN_MENUBAR
+void Darwin_InitMenuBar( void );
+void Darwin_ShutdownMenuBar( void );
+#else
+static inline void Darwin_InitMenuBar( void ) {}
+static inline void Darwin_ShutdownMenuBar( void ) {}
+#endif
+
 static inline void Platform_Init( qboolean con_showalways, const char *basedir )
 {
 #if XASH_POSIX

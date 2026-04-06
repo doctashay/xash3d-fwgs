@@ -293,6 +293,7 @@ qboolean VID_CreateWindow( int width, int height, window_mode_t window_mode )
 	if( !VID_CreateWindowWithSafeGL( wndname, 0, 0, width, height, flags ))
 		return false;
 
+	Darwin_InitMenuBar();
 	VID_SaveWindowSize( width, height, false );
 
 	return true;
@@ -308,6 +309,8 @@ void VID_DestroyWindow( void )
 	GL_DeleteContext();
 
 	VID_RestoreScreenResolution();
+	if( host.hWnd )
+		Darwin_ShutdownMenuBar();
 	if( host.hWnd )
 		host.hWnd = NULL;
 	refState.window_mode = WINDOW_MODE_WINDOWED;

@@ -704,6 +704,7 @@ static rserr_t VID_CreateWindow( const int input_width, const int input_height, 
 	}
 
 	VID_SetWindowIcon( host.hWnd );
+	Darwin_InitMenuBar();
 	SDL_ShowWindow( host.hWnd );
 	SDL_RaiseWindow( host.hWnd );
 
@@ -771,6 +772,7 @@ cleanup:
 
 	if( host.hWnd )
 	{
+		Darwin_ShutdownMenuBar();
 		SDL_DestroyWindow( host.hWnd );
 		host.hWnd = NULL;
 	}
@@ -790,7 +792,10 @@ static void VID_DestroyWindow( void )
 	VID_RestoreScreenResolution( (window_mode_t)vid_fullscreen.value );
 
 	if( host.hWnd )
+	{
+		Darwin_ShutdownMenuBar();
 		SDL_DestroyWindow( host.hWnd );
+	}
 
 	host.hWnd = NULL;
 	refState.window_mode = WINDOW_MODE_WINDOWED;
