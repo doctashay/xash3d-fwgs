@@ -36,6 +36,7 @@ GNU General Public License for more details.
 #include "enginefeatures.h"
 #include "render_api.h"	// decallist_t
 #include "tests.h"
+#include "whereami.h"
 
 host_parm_t host;	// host parms
 static jmp_buf return_from_main_buf;
@@ -59,6 +60,38 @@ void Host_ExitInMain( void )
 
 #ifdef XASH_ENGINE_TESTS
 struct tests_stats_s tests_stats;
+
+static void Host_SetTestEnvVar( const char *name, const char *value )
+{
+#if XASH_WIN32
+	_putenv_s( name, value );
+#else
+	setenv( name, value, 1 );
+#endif
+}
+
+static void Host_SetupTestEnvironment( void )
+{
+	char exepath[MAX_SYSPATH];
+	char testdata[MAX_SYSPATH];
+	int exelen, dirlen = 0;
+
+	Host_SetTestEnvVar( "SDL_VIDEODRIVER", "dummy" );
+	Host_SetTestEnvVar( "SDL_AUDIODRIVER", "dummy" );
+
+	exelen = wai_getExecutablePath( exepath, sizeof( exepath ) - 1, &dirlen );
+	if( exelen <= 0 || dirlen <= 0 || dirlen >= (int)sizeof( exepath ))
+		return;
+
+	exepath[exelen] = '\0';
+	exepath[dirlen] = '\0';
+
+	Q_snprintf( testdata, sizeof( testdata ), "%s/../testdata", exepath );
+	COM_FixSlashes( testdata );
+
+	Host_SetTestEnvVar( "XASH3D_BASEDIR", testdata );
+	Host_SetTestEnvVar( "XASH3D_GAME", "valve" );
+}
 #endif
 
 CVAR_DEFINE( host_developer, "developer", "0", FCVAR_FILTERABLE, "engine is in development-mode" );
@@ -939,6 +972,7 @@ static void Host_InitCommon( int argc, char **argv, const char *progname, qboole
 	{
 		host.allow_console = true;
 		developer = DEV_EXTENDED;
+		Host_SetupTestEnvironment();
 	}
 #endif
 

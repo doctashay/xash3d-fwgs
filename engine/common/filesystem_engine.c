@@ -26,6 +26,7 @@ GNU General Public License for more details.
 #include "common.h"
 #include "library.h"
 #include "platform/platform.h"
+#include "whereami.h"
 
 #if XASH_APPLE && !XASH_IOS
 #include <sys/stat.h>
@@ -226,6 +227,25 @@ static qboolean FS_LoadProgs( void )
 	FSAPI GetFSAPI;
 
 	fs_hInstance = COM_LoadLibrary( name, false, true );
+
+#if XASH_ENGINE_TESTS
+	if( !fs_hInstance && Sys_CheckParm( "-runtests" ))
+	{
+		char exepath[MAX_SYSPATH];
+		char fullpath[MAX_SYSPATH];
+		int dirlen = 0;
+		int exelen = wai_getExecutablePath( exepath, sizeof( exepath ) - 1, &dirlen );
+
+		if( exelen > 0 && dirlen > 0 && dirlen < (int)sizeof( exepath ))
+		{
+			exepath[exelen] = '\0';
+			exepath[dirlen] = '\0';
+			Q_snprintf( fullpath, sizeof( fullpath ), "%s/../filesystem/%s", exepath, name );
+			COM_FixSlashes( fullpath );
+			fs_hInstance = COM_LoadLibrary( fullpath, false, true );
+		}
+	}
+#endif
 
 	if( !fs_hInstance )
 	{
