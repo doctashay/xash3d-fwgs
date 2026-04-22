@@ -166,6 +166,9 @@ def options(opt):
 	grp.add_option('--disable-werror', action = 'store_true', dest = 'DISABLE_WERROR', default = False,
 		help = 'disable compilation abort on warning')
 
+	grp.add_option('--disable-altivec', action = 'store_false', dest = 'ALTIVEC', default = True,
+		help = 'disable PowerPC AltiVec optimized paths when the compiler supports them [default: %(default)s]')
+
 	grp.add_option('--enable-tests', action = 'store_true', dest = 'TESTS', default = False,
 		help = 'enable building standalone tests (does not enable engine tests!) [default: %(default)s]')
 
@@ -324,6 +327,28 @@ def configure(conf):
 	conf.env.append_unique('CFLAGS', cflags)
 	conf.env.append_unique('CXXFLAGS', cxxflags)
 	conf.env.append_unique('LINKFLAGS', linkflags)
+
+	if conf.options.ALTIVEC and conf.env.COMPILER_CC != 'msvc' and conf.env.DEST_CPU in ['ppc', 'ppc64', 'powerpc', 'powerpc64']:
+		altivec_fragment = '''
+#include <altivec.h>
+int main(void)
+{
+	__vector signed int v = vec_splat_s32(0);
+	return vec_any_ne(v, v);
+}
+'''
+		altivec_flags = []
+		for flags in [['-maltivec'], ['-faltivec']]:
+			if conf.check_cc(cflags = flags, fragment = altivec_fragment, execute = False,
+					msg = 'Checking for AltiVec support with %s' % ' '.join(flags),
+					mandatory = False):
+				altivec_flags = flags
+				break
+
+		if altivec_flags:
+			conf.env.append_unique('CFLAGS', altivec_flags)
+			conf.env.append_unique('CXXFLAGS', altivec_flags)
+			conf.define('XASH_ALTIVEC', 1)
 
 	if conf.env.COMPILER_CC == 'msvc':
 		opt_cflags = ['/we4013'] # -Werror=implicit-function-declaration
