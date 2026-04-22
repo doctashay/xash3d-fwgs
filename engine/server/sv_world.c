@@ -301,6 +301,13 @@ static hull_t *SV_HullForStudioModel( edict_t *ent, vec3_t mins, vec3_t maxs, ve
 
 		if( FBitSet( ent->v.flags, FL_CLIENT|FL_FAKECLIENT ))
 		{
+#if XASH_BIG_ENDIAN
+			// PPC currently has a regression in player studio hitbox traces for
+			// zero-size bullet lines. Fall back to the regular player bbox so
+			// hitscan weapons still collide with players instead of passing
+			// through them completely.
+			useComplexHull = false;
+#else
 			if( sv_clienttrace.value == 0.0f )
 			{
 				// so no way to trace studiomodels by hitboxes
@@ -312,6 +319,7 @@ static hull_t *SV_HullForStudioModel( edict_t *ent, vec3_t mins, vec3_t maxs, ve
 				scale = sv_clienttrace.value * 0.5f;
 				VectorSet( size, 1.0f, 1.0f, 1.0f );
 			}
+#endif
 		}
 	}
 

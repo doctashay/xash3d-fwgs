@@ -344,9 +344,15 @@ void Host_ValidateEngineFeatures( uint32_t mask, uint32_t features )
 	// print requested first
 	Host_PrintFeatures( features, "EXT", engine_features, ARRAYSIZE( engine_features ));
 
-	// now warn about incompatible bits
+	// Mutually exclusive (see enginefeatures.h). Game DLLs often request
+	// ENGINE_COMPUTE_STUDIO_LERP while Counter-Strike also forces
+	// ENGINE_STEP_POSHISTORY_LERP — using both breaks studio entity origins
+	// (double lerp: CL_InterpolateModel then R_StudioLerpMovement).
 	if( FBitSet( features, ENGINE_STEP_POSHISTORY_LERP|ENGINE_COMPUTE_STUDIO_LERP ) == ( ENGINE_STEP_POSHISTORY_LERP|ENGINE_COMPUTE_STUDIO_LERP ))
-		Con_Printf( S_WARN "%s: incompatible ENGINE_STEP_POSHISTORY_LERP and ENGINE_COMPUTE_STUDIO_LERP are enabled!\n", __func__ );
+	{
+		ClearBits( features, ENGINE_COMPUTE_STUDIO_LERP );
+		Con_Printf( S_NOTE "%s: cleared ENGINE_COMPUTE_STUDIO_LERP (incompatible with ENGINE_STEP_POSHISTORY_LERP)\n", __func__ );
+	}
 
 	// finally set global variable
 	host.features = features;
@@ -1304,6 +1310,10 @@ void Host_ShutdownWithReason( const char *reason )
 		host.status = HOST_SHUTDOWN; // prepare host to normal shutdown
 
 #if !XASH_DEDICATED
+	// Centralize the normal quit path so window-close and other direct
+	// Sys_Quit() callers still notify remote servers before tearing down.
+	CL_Disconnect();
+
 	if( host.type == HOST_NORMAL && !error )
 		Host_WriteConfig();
 #endif

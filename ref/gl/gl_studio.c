@@ -3555,8 +3555,14 @@ static void R_StudioDrawModelInternal( cl_entity_t *e, int flags )
 	{
 		// select the properly method
 		if( e->player )
-			pStudioDraw->StudioDrawPlayer( flags, R_StudioGetPlayerState( e->index - 1 ));
-		else pStudioDraw->StudioDrawModel( flags );
+		{
+			if( !pStudioDraw->StudioDrawPlayer( flags, R_StudioGetPlayerState( e->index - 1 )))
+				R_StudioDrawPlayer( flags, R_StudioGetPlayerState( e->index - 1 ));
+		}
+		else if( !pStudioDraw->StudioDrawModel( flags ))
+		{
+			R_StudioDrawModel( flags );
+		}
 	}
 }
 
