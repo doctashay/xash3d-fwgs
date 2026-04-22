@@ -15,6 +15,8 @@ GNU General Public License for more details.
 
 #include "common.h"
 #include "client.h"
+#include "platform.h"
+#include "cursor_type.h"
 
 /*
 =================================================================
@@ -250,6 +252,9 @@ qboolean SCR_PlayCinematic( const char *arg )
 	Con_FastClose();
 	cls.signon = 0;
 
+	// Hide hardware cursor over FFmpeg intro (otherwise OS/software cursor can ghost on top).
+	Platform_SetCursorType( dc_none );
+
 	return true;
 }
 
@@ -269,6 +274,7 @@ void SCR_StopCinematic( void )
 	cls.state = ca_disconnected;
 	cls.signon = 0;
 
+	Platform_SetCursorType( dc_arrow );
 	UI_SetActiveMenu( true );
 }
 

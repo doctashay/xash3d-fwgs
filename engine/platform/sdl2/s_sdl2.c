@@ -269,6 +269,12 @@ VoiceCapture_Init
 */
 qboolean VoiceCapture_Init( void )
 {
+#if defined(__APPLE__) && (defined(__ppc__) || defined(__ppc64__) || defined(__POWERPC__) || defined(__POWERPC64__))
+	// SDL2 capture uses CoreAudio queues; AudioQueueStop inside SDL_CloseAudioDevice
+	// can block the main thread indefinitely on PowerPC during disconnect/map change.
+	Con_Printf( S_NOTE "%s: microphone capture disabled on PowerPC (CoreAudio)\n", __func__ );
+	return false;
+#endif
 	SDL_AudioSpec wanted, spec;
 
 	if( !SDLash_IsAudioError( in_dev ))
@@ -335,6 +341,15 @@ void VoiceCapture_Shutdown( void )
 	if( SDLash_IsAudioError( in_dev ))
 		return;
 
+	// On CoreAudio capture devices, closing an actively running queue can block
+	// inside AudioQueueStop() during disconnect/map shutdown. Pause first so the
+	// backend drains out of the callback path before we destroy the device.
+	SDL_LockAudioDevice( in_dev );
+	SDL_PauseAudioDevice( in_dev, SDL_TRUE );
+	SDL_UnlockAudioDevice( in_dev );
+#if defined(__APPLE__)
+	SDL_Delay( 20 );
+#endif
 	SDL_CloseAudioDevice( in_dev );
 	in_dev = 0;
 }

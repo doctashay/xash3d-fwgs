@@ -54,6 +54,18 @@ qboolean SW_CreateBuffer( int width, int height, uint *stride, uint *bpp, uint *
 	sw.width = width;
 	sw.height = height;
 
+	if( !sw.renderer )
+	{
+		sw.renderer = SDL_CreateRenderer( host.hWnd, -1, SDL_RENDERER_SOFTWARE );
+
+		if( sw.renderer )
+		{
+			SDL_RendererInfo info;
+			SDL_GetRendererInfo( sw.renderer, &info );
+			Con_Printf( "SDL_Renderer %s initialized for software output\n", info.name );
+		}
+	}
+
 	if( sw.renderer )
 	{
 		unsigned int format = SDL_GetWindowPixelFormat( host.hWnd );
@@ -704,7 +716,6 @@ static rserr_t VID_CreateWindow( const int input_width, const int input_height, 
 	}
 
 	VID_SetWindowIcon( host.hWnd );
-	Darwin_InitMenuBar();
 	SDL_ShowWindow( host.hWnd );
 	SDL_RaiseWindow( host.hWnd );
 
@@ -771,11 +782,8 @@ cleanup:
 	}
 
 	if( host.hWnd )
-	{
-		Darwin_ShutdownMenuBar();
 		SDL_DestroyWindow( host.hWnd );
 		host.hWnd = NULL;
-	}
 
 	return err;
 }
@@ -792,10 +800,7 @@ static void VID_DestroyWindow( void )
 	VID_RestoreScreenResolution( (window_mode_t)vid_fullscreen.value );
 
 	if( host.hWnd )
-	{
-		Darwin_ShutdownMenuBar();
 		SDL_DestroyWindow( host.hWnd );
-	}
 
 	host.hWnd = NULL;
 	refState.window_mode = WINDOW_MODE_WINDOWED;
@@ -1004,9 +1009,18 @@ Set the described video mode
 */
 qboolean VID_SetMode( void )
 {
+	qboolean reload_gl_extensions = false;
+	convar_t *msaa_cvar;
 	int width, height;
 	rserr_t	err;
 	window_mode_t window_mode;
+
+	// MSAA is applied at GL context creation; resizing the window is not enough.
+	if( host.hWnd && !glw_state.software && ( msaa_cvar = Cvar_FindVar( "gl_msaa_samples" )) != NULL && FBitSet( msaa_cvar->flags, FCVAR_CHANGED ))
+	{
+		R_Free_Video();
+		reload_gl_extensions = true;
+	}
 
 	width = window_width.value;
 	height = window_height.value;
@@ -1085,6 +1099,13 @@ qboolean VID_SetMode( void )
 	{
 		sdlState.prev_width = width;
 		sdlState.prev_height = height;
+
+		if( reload_gl_extensions && ref.dllFuncs.GL_InitExtensions )
+			ref.dllFuncs.GL_InitExtensions();
+
+		if(( msaa_cvar = Cvar_FindVar( "gl_msaa_samples" )) != NULL )
+			ClearBits( msaa_cvar->flags, FCVAR_CHANGED );
+
 		return true;
 	}
 

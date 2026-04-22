@@ -1580,6 +1580,11 @@ void CL_ClearState( void )
 {
 	int	i;
 
+	// Close voice capture before wiping client state. Map changes (svc_changing)
+	// use this path without CL_Disconnect(); leaving the mic device open until
+	// Voice_Init runs again can deadlock SDL/CoreAudio on shutdown (e.g. macOS PPC).
+	Voice_Disconnect();
+
 	CL_ClearResourceLists();
 
 	for( i = 0; i < MAX_CLIENTS; i++ )

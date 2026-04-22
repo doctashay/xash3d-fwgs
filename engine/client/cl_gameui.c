@@ -20,6 +20,8 @@ GNU General Public License for more details.
 #include "input.h"
 #include "server.h" // !!svgame.hInstance
 #include "vid_common.h"
+#include "platform.h"
+#include "cursor_type.h"
 
 static void 	UI_UpdateUserinfo( void );
 
@@ -318,6 +320,8 @@ static void GAME_EXPORT UI_DrawLogo( const char *filename, float x, float y, flo
 			gameui.drawLogo = false;
 			return;
 		}
+
+		Platform_SetCursorType( dc_none );
 	}
 
 	if( width <= 0 || height <= 0 )

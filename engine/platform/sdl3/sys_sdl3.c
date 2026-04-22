@@ -113,6 +113,13 @@ void SDLash_Init( const char *basedir )
 		Sys_Warn( "SDL_Init failed: %s", SDL_GetError( ));
 		host.type = HOST_DEDICATED;
 	}
+#if XASH_APPLE && !XASH_IOS
+	else
+	{
+		Darwin_InitMenuBar();
+		Darwin_AcquirePowerAssertion();
+	}
+#endif
 
 	SDL_SetHint( SDL_HINT_MOUSE_TOUCH_EVENTS, "0" );
 	SDL_SetHint( SDL_HINT_TOUCH_MOUSE_EVENTS, "0" );
@@ -122,6 +129,10 @@ void SDLash_Init( const char *basedir )
 
 void SDLash_Shutdown( void )
 {
+#if XASH_APPLE && !XASH_IOS
+	Darwin_ReleasePowerAssertion();
+	Darwin_ShutdownMenuBar();
+#endif
 	SDLash_FreeCursors();
 	SDL_Quit();
 }

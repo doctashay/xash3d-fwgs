@@ -75,6 +75,12 @@ static void SDLash_KeyEvent( const SDL_KeyboardEvent *key )
 		keynum = keynum - (min) + (repl); \
 	}
 
+#if defined(__APPLE__)
+	// SDL3 uses SDLK_A..SDLK_Z; SDLK_a/SDLK_z are legacy aliases that may be unavailable.
+	if( key->key >= SDLK_A && key->key <= SDLK_Z )
+		keynum = 'a' + ( key->key - SDLK_A );
+	else
+#endif
 	DECLARE_KEY_RANGE( SDL_SCANCODE_A, SDL_SCANCODE_Z, 'a' )
 	else DECLARE_KEY_RANGE( SDL_SCANCODE_1, SDL_SCANCODE_9, '1' )
 	else DECLARE_KEY_RANGE( SDL_SCANCODE_F1, SDL_SCANCODE_F12, K_F1 )

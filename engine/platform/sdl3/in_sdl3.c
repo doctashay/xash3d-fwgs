@@ -37,7 +37,8 @@ void SDLash_InitCursors( void )
 	if( cursors.initialized )
 		SDLash_FreeCursors();
 
-	// load up all default cursors
+	// Same path as SDL2 / non-macOS SDL3: system cursors. A monochrome SDL_CreateCursor
+	// "arrow" for macOS looked wrong (dark/inverted) and still ghosted over FFmpeg video.
 	cursors.cursors[dc_none] = NULL;
 	cursors.cursors[dc_arrow] = SDL_CreateSystemCursor( SDL_SYSTEM_CURSOR_DEFAULT );
 	cursors.cursors[dc_ibeam] = SDL_CreateSystemCursor( SDL_SYSTEM_CURSOR_TEXT );
@@ -199,5 +200,3 @@ key_modifier_t Platform_GetKeyModifiers( void )
 
 	return result_flags;
 }
-
-

@@ -1120,6 +1120,8 @@ void GL_InitExtensions( void )
 		// Same drivers often mis-sequence world draws vs uploads (streaks, stalls); mirror Win32 GDI fix.
 		gEngfuncs.Cvar_SetValue( "gl_finish", 1 );
 		gEngfuncs.Con_Reportf( S_NOTE "Video: gl_finish enabled for Radeon (Apple)\n" );
+		gEngfuncs.Cvar_SetValue( "gl_texture_npot", 0 );
+		gEngfuncs.Con_Reportf( S_NOTE "Video: gl_texture_npot disabled for Radeon (Apple)\n" );
 	}
 #endif
 
