@@ -837,6 +837,7 @@ static void SV_TestBandWidth( netadr_t from )
 	}
 
 	crc = svs.testpacket_crcs[ofs];
+	crc = LittleLong( crc );
 	memcpy( svs.testpacket_crcpos, &crc, sizeof( crc ));
 
 	// send the datagram

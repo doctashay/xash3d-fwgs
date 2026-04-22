@@ -837,7 +837,7 @@ qboolean CRC32_MapFile( dword *crcvalue, const char *filename, qboolean multipla
 {
 	char	headbuf[1024], buffer[1024];
 	int	i, num_bytes, lumplen;
-	int	version, hdr_size;
+	int	hdr_size;
 	dheader_t	*header;
 	file_t	*f;
 
@@ -853,8 +853,6 @@ qboolean CRC32_MapFile( dword *crcvalue, const char *filename, qboolean multipla
 	f = FS_Open( filename, "rb", false );
 	if( !f ) return false;
 
-	// read version number
-	FS_Read( f, &version, sizeof( int ));
 	FS_Seek( f, 0, SEEK_SET );
 
 	hdr_size = sizeof( int ) + sizeof( dlump_t ) * HEADER_LUMPS;
@@ -870,7 +868,7 @@ qboolean CRC32_MapFile( dword *crcvalue, const char *filename, qboolean multipla
 	header = (dheader_t *)headbuf;
 
 	// invalid version ?
-	switch( header->version )
+	switch( LittleLong( header->version ))
 	{
 	case Q1BSP_VERSION:
 	case HLBSP_VERSION:
@@ -885,8 +883,8 @@ qboolean CRC32_MapFile( dword *crcvalue, const char *filename, qboolean multipla
 
 	for( i = LUMP_PLANES; i < HEADER_LUMPS; i++ )
 	{
-		lumplen = header->lumps[i].filelen;
-		FS_Seek( f, header->lumps[i].fileofs, SEEK_SET );
+		lumplen = LittleLong( header->lumps[i].filelen );
+		FS_Seek( f, LittleLong( header->lumps[i].fileofs ), SEEK_SET );
 
 		while( lumplen > 0 )
 		{

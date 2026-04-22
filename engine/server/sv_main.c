@@ -57,6 +57,7 @@ static CVAR_DEFINE_AUTO( sv_allow_dlfile, "1", 0, "compatibility cvar, does noth
 CVAR_DEFINE_AUTO( sv_uploadmax, "0.5", FCVAR_SERVER, "max size to upload custom resources (500 kB as default)" );
 CVAR_DEFINE_AUTO( sv_downloadurl, "", FCVAR_PROTECTED, "location from which clients can download missing files" );
 CVAR_DEFINE( sv_consistency, "mp_consistency", "1", FCVAR_SERVER, "enbale consistency check in multiplayer" );
+CVAR_DEFINE_AUTO( sv_trace_consistency, "0", 0, "enable consistency bounds tracing (good for developers)" );
 CVAR_DEFINE_AUTO( mp_logecho, "1", 0, "log multiplayer frags to server logfile" );
 CVAR_DEFINE_AUTO( mp_logfile, "1", 0, "log multiplayer frags to console" );
 CVAR_DEFINE_AUTO( sv_log_singleplayer, "0", FCVAR_ARCHIVE, "allows logging in singleplayer games" );
@@ -944,6 +945,7 @@ void SV_Init( void )
 	Cvar_RegisterVariable( &sv_instancedbaseline );
 	Cvar_RegisterVariable( &sv_contact );
 	Cvar_RegisterVariable( &sv_consistency );
+	Cvar_RegisterVariable( &sv_trace_consistency );
 	Cvar_RegisterVariable( &sv_downloadurl );
 	Cvar_RegisterVariable( &sv_novis );
 	Cvar_RegisterVariable( &sv_hostmap );

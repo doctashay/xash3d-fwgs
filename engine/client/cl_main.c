@@ -2561,6 +2561,7 @@ static void CL_ServerList( netadr_t from, sizebuf_t *msg )
 	{
 		uint8_t addr[16];
 		netadr_t servadr = { 0 };
+		uint16_t port;
 
 		if( NET_NetadrType( &from ) == NA_IP6 ) // IPv6 master server only sends IPv6 addresses
 		{
@@ -2573,10 +2574,11 @@ static void CL_ServerList( netadr_t from, sizebuf_t *msg )
 			MSG_ReadBytes( msg, servadr.ip, sizeof( servadr.ip ));	// 4 bytes for IP
 			NET_NetadrSetType( &servadr, NA_IP );
 		}
-		servadr.port = MSG_ReadShort( msg );			// 2 bytes for Port
+		port = (uint16_t)MSG_ReadWord( msg ); // master replies store ports in little-endian wire order
+		servadr.port = htons( port );
 
 		// list is ends here
-		if( !servadr.port )
+		if( !port )
 			break;
 
 		NET_Config( true, false ); // allow remote

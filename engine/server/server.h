@@ -416,6 +416,7 @@ extern convar_t		sv_skyvec_x;
 extern convar_t		sv_skyvec_y;
 extern convar_t		sv_skyvec_z;
 extern convar_t		sv_consistency;
+extern convar_t		sv_trace_consistency;
 extern convar_t		sv_password;
 extern convar_t		sv_uploadmax;
 extern convar_t		sv_trace_messages;

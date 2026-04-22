@@ -3908,11 +3908,11 @@ static qboolean Mod_LoadBmodelLumps( model_t *mod, byte *mod_base, size_t buffer
 		break;
 	case Q1BSP_VERSION:
 	case QBSP2_VERSION:
-		if( header->version == QBSP2_VERSION )
+		if( LittleLong( header->version ) == QBSP2_VERSION )
 			SetBits( mod->flags, MODEL_QBSP2 );
 		break;
 	default:
-		Con_Printf( S_ERROR "%s has wrong version number (%i should be %i)\n", mod->name, header->version, HLBSP_VERSION );
+		Con_Printf( S_ERROR "%s has wrong version number (%i should be %i)\n", mod->name, LittleLong( header->version ), HLBSP_VERSION );
 		loadstat.numerrors++;
 		return false;
 	}
@@ -4365,7 +4365,7 @@ int GAME_EXPORT Mod_SaveLump( const char *filename, const int lump, void *lumpda
 	header = (dheader_t *)buffer;
 
 	// these checks below are redundant
-	if( header->version != HLBSP_VERSION )
+	if( LittleLong( header->version ) != HLBSP_VERSION )
 	{
 		FS_Close( f );
 		return LUMP_SAVE_BAD_VERSION;

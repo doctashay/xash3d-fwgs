@@ -539,7 +539,15 @@ void MSG_WriteDword( sizebuf_t *sb, uint val )
 
 void MSG_WriteFloat( sizebuf_t *sb, float val )
 {
-	MSG_WriteBits( sb, &val, sizeof( val ) << 3 );
+	union
+	{
+		float	f;
+		uint32_t i;
+	} conv;
+
+	conv.f = val;
+	// Serialize floats as little-endian IEEE-754 dwords so mixed-endian peers agree.
+	MSG_WriteDword( sb, conv.i );
 }
 
 qboolean MSG_WriteBytes( sizebuf_t *sb, const void *pBuf, int nBytes )
@@ -815,11 +823,16 @@ uint MSG_ReadDword( sizebuf_t *sb )
 
 float MSG_ReadFloat( sizebuf_t *sb )
 {
-	float	ret;
+	union
+	{
+		float	f;
+		uint32_t i;
+	} conv;
 
-	MSG_ReadBits( sb, &ret, sizeof( ret ) << 3 );
+	// Reverse the little-endian wire format written by MSG_WriteFloat.
+	conv.i = MSG_ReadDword( sb );
 
-	return ret;
+	return conv.f;
 }
 
 qboolean MSG_ReadBytes( sizebuf_t *sb, void *pOut, int nBytes )

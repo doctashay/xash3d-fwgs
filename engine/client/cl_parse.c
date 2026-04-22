@@ -1623,8 +1623,19 @@ static void CL_SendConsistencyInfo( sizebuf_t *msg, connprotocol_t proto )
 				VectorCopy( mins, maxs );
 			}
 
-			MSG_WriteBytes( msg, mins, 12 );
-			MSG_WriteBytes( msg, maxs, 12 );
+			MSG_WriteFloat( msg, mins[0] );
+			MSG_WriteFloat( msg, mins[1] );
+			MSG_WriteFloat( msg, mins[2] );
+			MSG_WriteFloat( msg, maxs[0] );
+			MSG_WriteFloat( msg, maxs[1] );
+			MSG_WriteFloat( msg, maxs[2] );
+			if( cl_trace_consistency.value )
+			{
+				Con_Printf( "consistency send %-10s %s mins=(%.3f %.3f %.3f) maxs=(%.3f %.3f %.3f)%s\n",
+					CL_CheckTypeToString( pc->check_type ), filename,
+					mins[0], mins[1], mins[2], maxs[0], maxs[1], maxs[2],
+					user_changed_diskfile ? " crc-modified" : "" );
+			}
 			break;
 		case force_model_samebounds:
 		case force_model_specifybounds:
@@ -1635,8 +1646,19 @@ static void CL_SendConsistencyInfo( sizebuf_t *msg, connprotocol_t proto )
 				VectorSet( mins, -9999.9f, -9999.9f, -9999.9f );
 				VectorSet( maxs, 9999.9f, 9999.9f, 9999.9f );
 			}
-			MSG_WriteBytes( msg, mins, 12 );
-			MSG_WriteBytes( msg, maxs, 12 );
+			MSG_WriteFloat( msg, mins[0] );
+			MSG_WriteFloat( msg, mins[1] );
+			MSG_WriteFloat( msg, mins[2] );
+			MSG_WriteFloat( msg, maxs[0] );
+			MSG_WriteFloat( msg, maxs[1] );
+			MSG_WriteFloat( msg, maxs[2] );
+			if( cl_trace_consistency.value )
+			{
+				Con_Printf( "consistency send %-10s %s mins=(%.3f %.3f %.3f) maxs=(%.3f %.3f %.3f)%s\n",
+					CL_CheckTypeToString( pc->check_type ), filename,
+					mins[0], mins[1], mins[2], maxs[0], maxs[1], maxs[2],
+					user_changed_diskfile ? " crc-modified" : "" );
+			}
 			break;
 		default:
 			Host_Error( "Unknown consistency type %i\n", pc->check_type );
