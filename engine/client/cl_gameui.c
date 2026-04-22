@@ -1027,6 +1027,7 @@ static int GAME_EXPORT pfnCheckGameDll( void )
 	return true;
 #else
 	string dllpath;
+	string raw;
 
 	if( svgame.hInstance )
 		return true;
@@ -1035,6 +1036,15 @@ static int GAME_EXPORT pfnCheckGameDll( void )
 
 	if( FS_FileExists( dllpath, false ))
 		return true;
+
+	// Non-x86 targets rewrite e.g. dlls/sandbot.dylib -> dlls/sandbot_ppc.dylib. Mods often ship only
+	// the unsuffixed name; accept it when -dll did not override the path.
+	if( COM_StringEmpty( host.gamedll ))
+	{
+		COM_GetGameDllPathFromGameInfo( raw, sizeof( raw ));
+		if( !COM_StringEmpty( raw ) && Q_stricmp( raw, dllpath ) != 0 && FS_FileExists( raw, false ))
+			return true;
+	}
 
 	return false;
 #endif

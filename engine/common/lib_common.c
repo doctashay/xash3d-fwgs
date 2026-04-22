@@ -249,6 +249,33 @@ void COM_GetCommonLibraryPath( ECommonLibraryType eLibType, char *out, size_t si
 }
 
 /*
+==============
+COM_GetGameDllPathFromGameInfo
+
+Path written in gameinfo.txt / liblist.gam for the running platform (e.g. dlls/sandbot.dylib).
+Unlike COM_GetCommonLibraryPath( LIBRARY_SERVER ), this is not rewritten to an arch-suffixed name.
+==============
+*/
+void COM_GetGameDllPathFromGameInfo( char *out, size_t size )
+{
+	if( !out || size == 0 )
+		return;
+
+	out[0] = 0;
+
+	if( !FI || !FI->GameInfo )
+		return;
+
+#if XASH_WIN32
+	Q_strncpy( out, FI->GameInfo->game_dll, size );
+#elif XASH_APPLE
+	Q_strncpy( out, FI->GameInfo->game_dll_osx, size );
+#else
+	Q_strncpy( out, FI->GameInfo->game_dll_linux, size );
+#endif
+}
+
+/*
 =============================================================================
 
 	C++ MANGLE CONVERSION

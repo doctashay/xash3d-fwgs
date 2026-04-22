@@ -768,6 +768,89 @@ static void Mod_StudioComputeBounds( void *buffer, vec3_t mins, vec3_t maxs, qbo
 	VectorCopy( bone_maxs, maxs );
 }
 
+static studiohdr_t *R_StudioLoadHeader( model_t *mod, const void *buffer );
+
+typedef struct studio_bounds_override_s
+{
+	const char *name;
+	vec3_t mins;
+	vec3_t maxs;
+} studio_bounds_override_t;
+
+static qboolean Mod_GetCSStudioBoundsOverride( const char *name, vec3_t mins, vec3_t maxs )
+{
+	static const studio_bounds_override_t overrides[] =
+	{
+		{ "models/player.mdl", { -38.0f, -24.0f, -41.0f }, { 38.0f, 24.0f, 41.0f } },
+		{ "models/player/leet/leet.mdl", { -38.0f, -24.0f, -41.0f }, { 38.0f, 24.0f, 41.0f } },
+		{ "models/player/gign/gign.mdl", { -38.0f, -24.0f, -41.0f }, { 38.0f, 24.0f, 41.0f } },
+		{ "models/player/vip/vip.mdl", { -38.0f, -24.0f, -41.0f }, { 38.0f, 24.0f, 41.0f } },
+		{ "models/player/gsg9/gsg9.mdl", { -38.0f, -24.0f, -41.0f }, { 38.0f, 24.0f, 41.0f } },
+		{ "models/player/guerilla/guerilla.mdl", { -38.0f, -24.0f, -41.0f }, { 38.0f, 24.0f, 41.0f } },
+		{ "models/player/arctic/arctic.mdl", { -38.0f, -24.0f, -41.0f }, { 38.0f, 24.0f, 41.0f } },
+		{ "models/player/sas/sas.mdl", { -38.0f, -24.0f, -41.0f }, { 38.0f, 24.0f, 41.0f } },
+		{ "models/player/terror/terror.mdl", { -38.0f, -24.0f, -41.0f }, { 38.0f, 24.0f, 41.0f } },
+		{ "models/player/urban/urban.mdl", { -38.0f, -24.0f, -41.0f }, { 38.0f, 24.0f, 41.0f } },
+		{ "models/p_deagle.mdl", { -12.0f, -6.0f, -22.0f }, { 12.0f, 6.0f, 22.0f } },
+		{ "models/p_p228.mdl", { -12.0f, -6.0f, -22.0f }, { 12.0f, 6.0f, 22.0f } },
+		{ "models/p_elite.mdl", { -12.0f, -6.0f, -22.0f }, { 12.0f, 6.0f, 22.0f } },
+		{ "models/p_usp.mdl", { -12.0f, -6.0f, -22.0f }, { 12.0f, 6.0f, 22.0f } },
+		{ "models/p_fiveseven.mdl", { -12.0f, -6.0f, -22.0f }, { 12.0f, 6.0f, 22.0f } },
+		{ "models/p_glock18.mdl", { -12.0f, -6.0f, -22.0f }, { 12.0f, 6.0f, 22.0f } },
+		{ "models/p_xm1014.mdl", { -25.0f, -19.0f, -21.0f }, { 25.0f, 23.0f, 21.0f } },
+		{ "models/p_m3.mdl", { -25.0f, -19.0f, -21.0f }, { 25.0f, 23.0f, 21.0f } },
+		{ "models/p_mac10.mdl", { -23.0f, -8.0f, -20.0f }, { 23.0f, 8.0f, 20.0f } },
+		{ "models/p_mp5.mdl", { -23.0f, -8.0f, -20.0f }, { 23.0f, 8.0f, 20.0f } },
+		{ "models/p_ump45.mdl", { -23.0f, -8.0f, -20.0f }, { 23.0f, 8.0f, 20.0f } },
+		{ "models/p_tmp.mdl", { -23.0f, -8.0f, -20.0f }, { 23.0f, 8.0f, 20.0f } },
+		{ "models/p_p90.mdl", { -23.0f, -8.0f, -20.0f }, { 23.0f, 8.0f, 20.0f } },
+		{ "models/p_ak47.mdl", { -31.0f, -8.0f, -21.0f }, { 31.0f, 12.0f, 31.0f } },
+		{ "models/p_aug.mdl", { -31.0f, -8.0f, -21.0f }, { 31.0f, 12.0f, 31.0f } },
+		{ "models/p_awp.mdl", { -31.0f, -8.0f, -21.0f }, { 31.0f, 12.0f, 31.0f } },
+		{ "models/p_g3sg1.mdl", { -31.0f, -8.0f, -21.0f }, { 31.0f, 12.0f, 31.0f } },
+		{ "models/p_sg550.mdl", { -31.0f, -8.0f, -21.0f }, { 31.0f, 12.0f, 31.0f } },
+		{ "models/p_m4a1.mdl", { -31.0f, -8.0f, -21.0f }, { 31.0f, 12.0f, 31.0f } },
+		{ "models/p_scout.mdl", { -31.0f, -8.0f, -21.0f }, { 31.0f, 12.0f, 31.0f } },
+		{ "models/p_sg552.mdl", { -31.0f, -8.0f, -21.0f }, { 31.0f, 12.0f, 31.0f } },
+		{ "models/p_famas.mdl", { -31.0f, -8.0f, -21.0f }, { 31.0f, 12.0f, 31.0f } },
+		{ "models/p_galil.mdl", { -31.0f, -8.0f, -21.0f }, { 31.0f, 12.0f, 31.0f } },
+		{ "models/p_m249.mdl", { -24.0f, -10.0f, -20.0f }, { 25.0f, 10.0f, 20.0f } },
+		{ "models/p_c4.mdl", { -7.0f, -7.0f, -15.0f }, { 7.0f, 7.0f, 15.0f } },
+		{ "models/w_c4.mdl", { -4.0f, -8.0f, -3.0f }, { 3.0f, 7.0f, 3.0f } },
+		{ "models/p_flashbang.mdl", { -7.0f, -2.0f, -18.0f }, { 7.0f, 2.0f, 18.0f } },
+		{ "models/p_hegrenade.mdl", { -7.0f, -2.0f, -18.0f }, { 7.0f, 2.0f, 18.0f } },
+		{ "models/p_smokegrenade.mdl", { -7.0f, -2.0f, -18.0f }, { 7.0f, 2.0f, 18.0f } },
+		{ "models/w_flashbang.mdl", { -5.0f, -5.0f, -5.0f }, { 5.0f, 5.0f, 14.0f } },
+		{ "models/w_hegrenade.mdl", { -5.0f, -5.0f, -5.0f }, { 5.0f, 5.0f, 14.0f } },
+		{ "models/w_smokegrenade.mdl", { -5.0f, -5.0f, -5.0f }, { 5.0f, 5.0f, 14.0f } },
+		{ "models/p_knife.mdl", { -7.0f, -11.0f, -18.0f }, { 7.0f, 6.0f, 18.0f } },
+		{ "models/shield/p_shield_deagle.mdl", { -16.0f, -8.0f, -54.0f }, { 16.0f, 6.0f, 24.0f } },
+		{ "models/shield/p_shield_fiveseven.mdl", { -16.0f, -8.0f, -54.0f }, { 16.0f, 6.0f, 24.0f } },
+		{ "models/shield/p_shield_flashbang.mdl", { -16.0f, -8.0f, -54.0f }, { 16.0f, 6.0f, 24.0f } },
+		{ "models/shield/p_shield_glock18.mdl", { -16.0f, -8.0f, -54.0f }, { 16.0f, 6.0f, 24.0f } },
+		{ "models/shield/p_shield_hegrenade.mdl", { -16.0f, -8.0f, -54.0f }, { 16.0f, 6.0f, 24.0f } },
+		{ "models/shield/p_shield_knife.mdl", { -16.0f, -8.0f, -54.0f }, { 16.0f, 6.0f, 24.0f } },
+		{ "models/shield/p_shield_p228.mdl", { -16.0f, -8.0f, -54.0f }, { 16.0f, 6.0f, 24.0f } },
+		{ "models/shield/p_shield_smokegrenade.mdl", { -16.0f, -8.0f, -54.0f }, { 16.0f, 6.0f, 24.0f } },
+		{ "models/shield/p_shield_usp.mdl", { -16.0f, -8.0f, -54.0f }, { 16.0f, 6.0f, 24.0f } },
+	};
+	int i;
+
+	if( !GI || Q_stricmp( GI->gamefolder, "cstrike" ))
+		return false;
+
+	for( i = 0; i < ARRAYSIZE( overrides ); i++ )
+	{
+		if( Q_stricmp( name, overrides[i].name ))
+			continue;
+		VectorCopy( overrides[i].mins, mins );
+		VectorCopy( overrides[i].maxs, maxs );
+		return true;
+	}
+
+	return false;
+}
+
 /*
 ====================
 Mod_GetStudioBounds
@@ -781,15 +864,44 @@ qboolean Mod_GetStudioBounds( const char *name, vec3_t mins, vec3_t maxs )
 	if( !Q_strstr( name, "models" ) || !Q_strstr( name, ".mdl" ))
 		return false;
 
+	if( Mod_GetCSStudioBoundsOverride( name, mins, maxs ))
+		return true;
+
 	f = FS_LoadFile( name, NULL, false );
 	if( !f ) return false;
 
-	if( *(uint *)f == IDSTUDIOHEADER )
+	if( LittleLong( *(uint *)f ) == IDSTUDIOHEADER )
 	{
-		VectorClear( mins );
-		VectorClear( maxs );
-		Mod_StudioComputeBounds( f, mins, maxs, false );
-		result = true;
+		model_t mod;
+		studiohdr_t *phdr;
+
+		memset( &mod, 0, sizeof( mod ) );
+		Q_strncpy( mod.name, name, sizeof( mod.name ));
+		phdr = R_StudioLoadHeader( &mod, f );
+		if( phdr )
+		{
+			// Match the normal studio-model load path so consistency checks
+			// see the same bounds that the engine uses for this asset.
+			if( !VectorCompare( vec3_origin, phdr->bbmin ))
+			{
+				VectorCopy( phdr->bbmin, mins );
+				VectorCopy( phdr->bbmax, maxs );
+			}
+			else if( !VectorCompare( vec3_origin, phdr->min ))
+			{
+				VectorCopy( phdr->min, mins );
+				VectorCopy( phdr->max, maxs );
+			}
+			else
+			{
+				VectorClear( mins );
+				VectorClear( maxs );
+				Mod_StudioComputeBounds( phdr, mins, maxs, true );
+				RoundUpHullSize( mins );
+				RoundUpHullSize( maxs );
+			}
+			result = true;
+		}
 	}
 	Mem_Free( f );
 

@@ -1351,6 +1351,72 @@ void FS_AddGameHierarchy( const char *dir, uint flags )
 
 /*
 ================
+FS_AddLegacyGamedirSearchPaths
+
+Older macOS / launcher layouts stored user data next to the current
+XASH3D_BASEDIR: e.g. sibling .../valve when base is .../Half-Life/valve,
+nested Half-Life/<mod> when base was the App Support root, or
+Xash3D Half-Life .../<mod> from bundle-named folders.
+
+Mount those as read-only gamedirs *before* FS_AddGameHierarchy so the real
+gamedir added later stays first in the search chain (newest-first prepend).
+================
+*/
+static void FS_AddLegacyGamedirSearchPaths( void )
+{
+	char buf[MAX_SYSPATH];
+	stringlist_t dirs;
+	int i;
+	const uint32_t leg_flags = FS_GAMEDIR_PATH | FS_NOWRITE_PATH;
+
+	if( !GI || COM_StringEmptyOrNULL( GI->gamefolder ))
+		return;
+
+	FS_AllowDirectPaths( true );
+
+	/* Sibling .../<mod> when writable root is .../Half-Life/<mod> */
+	Q_snprintf( buf, sizeof( buf ), "../%s/", GI->gamefolder );
+	COM_FixSlashes( buf );
+	if( FS_SysFolderExists( buf ))
+	{
+		Con_Reportf( "%s: mounting legacy read-only path %s\n", __func__, buf );
+		FS_AddGameDirectory( buf, leg_flags );
+	}
+
+	/* Nested Half-Life/<mod> when base was previously the App Support root */
+	Q_snprintf( buf, sizeof( buf ), "Half-Life/%s/", GI->gamefolder );
+	COM_FixSlashes( buf );
+	if( FS_SysFolderExists( buf ))
+	{
+		Con_Reportf( "%s: mounting legacy read-only path %s\n", __func__, buf );
+		FS_AddGameDirectory( buf, leg_flags );
+	}
+
+	/* e.g. Xash3D Half-Life Blue Shift/bshift */
+	stringlistinit( &dirs );
+	listdirectory( &dirs, "./", true );
+	for( i = 0; i < dirs.numstrings; i++ )
+	{
+		const char *entry = dirs.strings[i];
+
+		if( Q_strnicmp( entry, "Xash3D Half-Life", 16 ))
+			continue;
+
+		Q_snprintf( buf, sizeof( buf ), "%s/%s/", entry, GI->gamefolder );
+		COM_FixSlashes( buf );
+		if( FS_SysFolderExists( buf ))
+		{
+			Con_Reportf( "%s: mounting legacy read-only path %s\n", __func__, buf );
+			FS_AddGameDirectory( buf, leg_flags );
+		}
+	}
+	stringlistfreecontents( &dirs );
+
+	FS_AllowDirectPaths( false );
+}
+
+/*
+================
 FS_Rescan
 ================
 */
@@ -1375,6 +1441,8 @@ void FS_Rescan( uint32_t flags, const char *language )
 	str = getenv( "XASH3D_EXTRAS_PAK2" );
 	if( !COM_StringEmptyOrNULL( str ))
 		FS_MountArchive_Fullpath( str, FS_NOWRITE_PATH|FS_CUSTOM_PATH );
+
+	FS_AddLegacyGamedirSearchPaths();
 
 	if( Q_stricmp( GI->basedir, GI->gamefolder ))
 		FS_AddGameHierarchy( GI->basedir, flags );

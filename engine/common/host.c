@@ -41,6 +41,29 @@ GNU General Public License for more details.
 host_parm_t host;	// host parms
 static jmp_buf return_from_main_buf;
 
+static void Host_VerifyRequestedGame( void )
+{
+	string requested_game;
+
+	if( !Sys_GetParmFromCmdLine( "-game", requested_game ))
+		return;
+
+	if( Q_stricmp( requested_game, "cstrike" ) && Q_stricmp( requested_game, "czero" ))
+		return;
+
+	if( GI && !Q_stricmp( GI->gamefolder, requested_game ))
+		return;
+
+	Sys_Error(
+		"Requested -game %s, but loaded gameinfo for %s (basedir %s).\n"
+		"This usually means the app bundle cannot see the expected %s data files.\n"
+		"Check your bundled Resources/Half-Life layout and any writable override data.\n",
+		requested_game,
+		( GI && GI->gamefolder[0] ) ? GI->gamefolder : "<none>",
+		( GI && GI->basedir[0] ) ? GI->basedir : "<none>",
+		requested_game );
+}
+
 /*
 ===============
 Host_ExitInMain
@@ -1052,6 +1075,7 @@ static void Host_InitCommon( int argc, char **argv, const char *progname, qboole
 #endif
 
 	FS_LoadGameInfo();
+	Host_VerifyRequestedGame();
 	Cvar_PostFSInit();
 
 	Image_CheckPaletteQ1 ();

@@ -41,6 +41,7 @@ GNU General Public License for more details.
 
 // path to default playermodel in GoldSrc
 #define DEFAULT_PLAYER_PATH_HALFLIFE	"models/player.mdl"
+#define DEFAULT_PLAYER_PATH_CSTRIKE	"models/player/urban/urban.mdl"
 
 // path to default playermodel in Quake
 #define DEFAULT_PLAYER_PATH_QUAKE	"progs/player.mdl"

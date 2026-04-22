@@ -468,6 +468,8 @@ static void SV_CreateBaseline( void )
 
 	if( FBitSet( host.features, ENGINE_QUAKE_COMPATIBLE ))
 		playermodel = SV_ModelIndex( DEFAULT_PLAYER_PATH_QUAKE );
+	else if( !Q_stricmp( GI->gamefolder, "cstrike" ) || !Q_stricmp( GI->gamefolder, "czero" ))
+		playermodel = SV_ModelIndex( DEFAULT_PLAYER_PATH_CSTRIKE );
 	else playermodel = SV_ModelIndex( DEFAULT_PLAYER_PATH_HALFLIFE );
 
 	memset( &nullstate, 0, sizeof( nullstate ));
@@ -740,17 +742,27 @@ qboolean SV_InitGame( qboolean silent )
 
 	COM_GetCommonLibraryPath( LIBRARY_SERVER, dllpath, sizeof( dllpath ));
 
-	if( !SV_LoadProgs( dllpath ))
+	if( SV_LoadProgs( dllpath ))
 	{
-		if( !silent )
-			Sys_Warn( "can't initialize %s: %s\n", dllpath, COM_GetLibraryError( ));
-		else
-			Con_Printf( S_ERROR "can't initialize %s: %s\n", dllpath, COM_GetLibraryError( ));
-		return false; // failed to loading server.dll
+		// client frames will be allocated in SV_ClientConnect
+		return true;
 	}
 
-	// client frames will be allocated in SV_ClientConnect
-	return true;
+	if( COM_StringEmpty( host.gamedll ))
+	{
+		string raw;
+
+		COM_GetGameDllPathFromGameInfo( raw, sizeof( raw ));
+
+		if( !COM_StringEmpty( raw ) && Q_stricmp( raw, dllpath ) != 0 && SV_LoadProgs( raw ))
+			return true;
+	}
+
+	if( !silent )
+		Sys_Warn( "can't initialize %s: %s\n", dllpath, COM_GetLibraryError( ));
+	else
+		Con_Printf( S_ERROR "can't initialize %s: %s\n", dllpath, COM_GetLibraryError( ));
+	return false; // failed to loading server.dll
 }
 
 /*
