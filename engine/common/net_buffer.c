@@ -396,6 +396,7 @@ qboolean MSG_WriteBits( sizebuf_t *sb, const void *pData, int nBits )
 	}
 
 	// read dwords.
+#if XASH_LITTLE_ENDIAN
 	while( nBitsLeft >= 32 )
 	{
 		uint32_t dword = *((uint32_t *)pOut);
@@ -404,6 +405,7 @@ qboolean MSG_WriteBits( sizebuf_t *sb, const void *pData, int nBits )
 		pOut += sizeof( uint32_t );
 		nBitsLeft -= 32;
 	}
+#endif
 
 	// read the remaining bytes.
 	while( nBitsLeft >= 8 )
@@ -501,22 +503,33 @@ void MSG_WriteByte( sizebuf_t *sb, int val )
 
 void MSG_WriteShort( sizebuf_t *sb, int val )
 {
-	MSG_WriteSBitLong( sb, val, sizeof( int16_t ) << 3 );
+	uint16_t u = (uint16_t)val;
+	MSG_WriteByte( sb, u & 0xFF );
+	MSG_WriteByte( sb, ( u >> 8 ) & 0xFF );
 }
 
 void MSG_WriteWord( sizebuf_t *sb, int val )
 {
-	MSG_WriteUBitLong( sb, val, sizeof( uint16_t ) << 3 );
+	uint16_t u = (uint16_t)val;
+	MSG_WriteByte( sb, u & 0xFF );
+	MSG_WriteByte( sb, ( u >> 8 ) & 0xFF );
 }
 
 void MSG_WriteLong( sizebuf_t *sb, int val )
 {
-	MSG_WriteSBitLong( sb, val, sizeof( int32_t ) << 3 );
+	uint32_t u = (uint32_t)val;
+	MSG_WriteByte( sb, u & 0xFF );
+	MSG_WriteByte( sb, ( u >> 8 ) & 0xFF );
+	MSG_WriteByte( sb, ( u >> 16 ) & 0xFF );
+	MSG_WriteByte( sb, ( u >> 24 ) & 0xFF );
 }
 
 void MSG_WriteDword( sizebuf_t *sb, uint val )
 {
-	MSG_WriteUBitLong( sb, val, sizeof( uint32_t ) << 3 );
+	MSG_WriteByte( sb, val & 0xFF );
+	MSG_WriteByte( sb, ( val >> 8 ) & 0xFF );
+	MSG_WriteByte( sb, ( val >> 16 ) & 0xFF );
+	MSG_WriteByte( sb, ( val >> 24 ) & 0xFF );
 }
 
 void MSG_WriteFloat( sizebuf_t *sb, float val )
@@ -748,7 +761,9 @@ int MSG_ReadShort( sizebuf_t *sb )
 
 int MSG_ReadWord( sizebuf_t *sb )
 {
-	return MSG_ReadUBitLong( sb, sizeof( uint16_t ) << 3 );
+	uint16_t lo = (uint16_t)MSG_ReadByte( sb );
+	uint16_t hi = (uint16_t)MSG_ReadByte( sb );
+	return (int)( lo | ( hi << 8 ));
 }
 
 float MSG_ReadCoord( sizebuf_t *sb )
@@ -786,7 +801,11 @@ int MSG_ReadLong( sizebuf_t *sb )
 
 uint MSG_ReadDword( sizebuf_t *sb )
 {
-	return MSG_ReadUBitLong( sb, sizeof( uint32_t ) << 3 );
+	uint32_t b0 = (uint32_t)MSG_ReadByte( sb );
+	uint32_t b1 = (uint32_t)MSG_ReadByte( sb );
+	uint32_t b2 = (uint32_t)MSG_ReadByte( sb );
+	uint32_t b3 = (uint32_t)MSG_ReadByte( sb );
+	return b0 | ( b1 << 8 ) | ( b2 << 16 ) | ( b3 << 24 );
 }
 
 float MSG_ReadFloat( sizebuf_t *sb )

@@ -131,8 +131,9 @@ def build(bld):
 	defines = ['OPUS_BUILD', 'FLOAT_APPROX', 'PACKAGE_VERSION="1.4.0"', 'CUSTOM_MODES', 'ENABLE_HARDENING']
 
 	bld.stlib(
+		name = 'opus',
 		source = sources,
-		target = 'opus',
+		target = 'xash_opus',
 		features = 'c',
 		includes = includes,
 		defines = defines,

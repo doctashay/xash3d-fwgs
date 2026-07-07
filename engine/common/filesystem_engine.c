@@ -26,6 +26,11 @@ GNU General Public License for more details.
 #include "common.h"
 #include "library.h"
 #include "platform/platform.h"
+#include "whereami.h"
+
+#if XASH_APPLE && !XASH_IOS
+#include <sys/stat.h>
+#endif
 
 #if XASH_WIN32
 #include <direct.h>
@@ -229,6 +234,25 @@ static qboolean FS_LoadProgs( void )
 
 	fs_hInstance = COM_LoadLibrary( name, false, true );
 
+#if XASH_ENGINE_TESTS
+	if( !fs_hInstance && Sys_CheckParm( "-runtests" ))
+	{
+		char exepath[MAX_SYSPATH];
+		char fullpath[MAX_SYSPATH];
+		int dirlen = 0;
+		int exelen = wai_getExecutablePath( exepath, sizeof( exepath ) - 1, &dirlen );
+
+		if( exelen > 0 && dirlen > 0 && dirlen < (int)sizeof( exepath ))
+		{
+			exepath[exelen] = '\0';
+			exepath[dirlen] = '\0';
+			Q_snprintf( fullpath, sizeof( fullpath ), "%s/../filesystem/%s", exepath, name );
+			COM_FixSlashes( fullpath );
+			fs_hInstance = COM_LoadLibrary( fullpath, false, true );
+		}
+	}
+#endif
+
 	if( !fs_hInstance )
 	{
 		Sys_Error( "%s: can't load filesystem library %s: %s\n", __func__, name, COM_GetLibraryError() );
@@ -306,13 +330,86 @@ static qboolean FS_DetermineRootDirectory( char *out, size_t size )
 #endif // !( XASH_POSIX || XASH_WIN32 )
 	return false;
 #else // generic case
+#if XASH_APPLE && XASH_SDL == 1
+	// SDL1 has no GetBasePath. Finder often leaves cwd as "/" or the bundle Resources
+	// path; the latter matches XASH3D_RODIR and trips the rodir==rootdir check in InitStdio.
+	if( getcwd( out, size ))
+	{
+		const char *ro = getenv( "XASH3D_RODIR" );
+		const char *home = getenv( "HOME" );
+
+		if( home && home[0] && (( out[0] == '/' && out[1] == '\0' ) || ( ro && ro[0] && !Q_stricmp( out, ro ))))
+		{
+			struct stat st;
+
+			Q_snprintf( out, size, "%s/Library/Application Support/%s", home, XASH_ENGINE_NAME );
+			out[size - 1] = '\0';
+			if( stat( out, &st ) != 0 && mkdir( out, 0755 ) != 0 && errno != EEXIST )
+				Sys_Error( "couldn't create %s: %s", out, strerror( errno ));
+			return true;
+		}
+		return true;
+	}
+	Sys_Error( "couldn't determine current directory: %s", strerror( errno ));
+	return false;
+#else
 	if( getcwd( out, size ))
 		return true;
 
 	Sys_Error( "couldn't determine current directory: %s", strerror( errno ));
 	return false;
+#endif
 #endif // generic case
 }
+
+#if XASH_APPLE && XASH_SDL >= 2 && !XASH_IOS
+/*
+ * Inside a .app bundle, FS_DetermineRootDirectory() uses SDL_GetPrefPath
+ * (Application Support) as the writable root. Packaged game data lives under
+ * Contents/Resources. If -rodir / XASH3D_RODIR are missing — common when
+ * running the Mach-O from Terminal — the engine would only see App Support
+ * and miss Resources/Half-Life/valve unless the user copied files by hand.
+ */
+static qboolean FS_AppleBundledGameRoot( char *out, size_t size )
+{
+	char *base;
+	char candidate[MAX_SYSPATH];
+	char test[MAX_SYSPATH];
+	struct stat st;
+
+	base = SDL_GetBasePath();
+	if( !base )
+		return false;
+
+	if( !Q_stristr( base, ".app" ))
+	{
+		SDL_free( base );
+		return false;
+	}
+
+	Q_snprintf( candidate, sizeof( candidate ), "%s../Resources/Half-Life", base );
+	SDL_free( base );
+	COM_FixSlashes( candidate );
+
+	Q_snprintf( test, sizeof( test ), "%s/valve", candidate );
+	if( stat( test, &st ) == 0 && S_ISDIR( st.st_mode ))
+	{
+		Q_strncpy( out, candidate, size );
+		out[size - 1] = 0;
+		return true;
+	}
+
+	Q_snprintf( test, sizeof( test ), "%s/cstrike", candidate );
+	if( stat( test, &st ) == 0 && S_ISDIR( st.st_mode ))
+	{
+		Q_strncpy( out, candidate, size );
+		out[size - 1] = 0;
+		return true;
+	}
+
+	return false;
+}
+#endif
 
 static qboolean FS_DetermineReadOnlyRootDirectory( char *out, size_t size )
 {
@@ -330,6 +427,9 @@ static qboolean FS_DetermineReadOnlyRootDirectory( char *out, size_t size )
 #if XASH_IOS
 	Q_strncpy( out, IOS_GetExecDir(), size );
 	return true;
+#elif XASH_APPLE && XASH_SDL >= 2
+	if( FS_AppleBundledGameRoot( out, size ))
+		return true;
 #endif
 
 	return false;

@@ -1326,6 +1326,13 @@ static void CL_RegisterUserMessage( sizebuf_t *msg, connprotocol_t proto )
 	else
 	{
 		size = MSG_ReadWord( msg );
+		// Big-endian safeguard: some user-message registrations may still arrive with swapped 16-bit size.
+		if( size > MAX_USERMSG_LENGTH && size != UINT16_MAX )
+		{
+			const int swapped = (( size & 0xFF ) << 8 ) | (( size >> 8 ) & 0xFF );
+			if( swapped >= -1 && swapped <= MAX_USERMSG_LENGTH )
+				size = swapped;
+		}
 		if( size == UINT16_MAX )
 			size = -1;
 	}
@@ -1582,8 +1589,19 @@ static void CL_SendConsistencyInfo( sizebuf_t *msg, connprotocol_t proto )
 				VectorCopy( mins, maxs );
 			}
 
-			MSG_WriteBytes( msg, mins, 12 );
-			MSG_WriteBytes( msg, maxs, 12 );
+			MSG_WriteFloat( msg, mins[0] );
+			MSG_WriteFloat( msg, mins[1] );
+			MSG_WriteFloat( msg, mins[2] );
+			MSG_WriteFloat( msg, maxs[0] );
+			MSG_WriteFloat( msg, maxs[1] );
+			MSG_WriteFloat( msg, maxs[2] );
+			if( cl_trace_consistency.value )
+			{
+				Con_Printf( "consistency send %-10s %s mins=(%.3f %.3f %.3f) maxs=(%.3f %.3f %.3f)%s\n",
+					CL_CheckTypeToString( pc->check_type ), filename,
+					mins[0], mins[1], mins[2], maxs[0], maxs[1], maxs[2],
+					user_changed_diskfile ? " crc-modified" : "" );
+			}
 			break;
 		case force_model_samebounds:
 		case force_model_specifybounds:
@@ -1594,8 +1612,19 @@ static void CL_SendConsistencyInfo( sizebuf_t *msg, connprotocol_t proto )
 				VectorSet( mins, -9999.9f, -9999.9f, -9999.9f );
 				VectorSet( maxs, 9999.9f, 9999.9f, 9999.9f );
 			}
-			MSG_WriteBytes( msg, mins, 12 );
-			MSG_WriteBytes( msg, maxs, 12 );
+			MSG_WriteFloat( msg, mins[0] );
+			MSG_WriteFloat( msg, mins[1] );
+			MSG_WriteFloat( msg, mins[2] );
+			MSG_WriteFloat( msg, maxs[0] );
+			MSG_WriteFloat( msg, maxs[1] );
+			MSG_WriteFloat( msg, maxs[2] );
+			if( cl_trace_consistency.value )
+			{
+				Con_Printf( "consistency send %-10s %s mins=(%.3f %.3f %.3f) maxs=(%.3f %.3f %.3f)%s\n",
+					CL_CheckTypeToString( pc->check_type ), filename,
+					mins[0], mins[1], mins[2], maxs[0], maxs[1], maxs[2],
+					user_changed_diskfile ? " crc-modified" : "" );
+			}
 			break;
 		default:
 			Host_Error( "Unknown consistency type %i\n", pc->check_type );
@@ -1688,6 +1717,7 @@ void CL_RegisterResources( sizebuf_t *msg, connprotocol_t proto )
 
 			// load tempent sprites (glowshell, muzzleflashes etc)
 			CL_LoadClientSprites ();
+			Con_DPrintf( "CL_RegisterResources: client sprites loaded\n" );
 
 			// invalidate all decal indexes
 			memset( cl.decal_index, 0, sizeof( cl.decal_index ));
@@ -1695,19 +1725,24 @@ void CL_RegisterResources( sizebuf_t *msg, connprotocol_t proto )
 			cl.audio_prepped = true;
 
 			CL_ClearWorld ();
+			Con_DPrintf( "CL_RegisterResources: world cleared\n" );
 
 			// load skybox
 			R_SetupSky( clgame.movevars.skyName );
+			Con_DPrintf( "CL_RegisterResources: sky setup done\n" );
 
 			// tell rendering system we have a new set of models.
 			ref.dllFuncs.R_NewMap ();
+			Con_DPrintf( "CL_RegisterResources: R_NewMap done\n" );
 
 			Mod_LoadDetailTextures( cl.worldmodel );
 
 			// check if this map must start from dark screen
 			CL_StartDark ();
+			Con_DPrintf( "CL_RegisterResources: dark-start done\n" );
 
 			CL_SetupOverviewParams();
+			Con_DPrintf( "CL_RegisterResources: overview params done\n" );
 
 			// release unused SpriteTextures
 			for( i = 1, mod = clgame.sprites; i < MAX_CLIENT_SPRITES; i++, mod++ )
@@ -1717,6 +1752,7 @@ void CL_RegisterResources( sizebuf_t *msg, connprotocol_t proto )
 			}
 
 			Mod_FreeUnused ();
+			Con_DPrintf( "CL_RegisterResources: free unused models done\n" );
 
 			if( host_developer.value <= DEV_NONE )
 				Con_ClearNotify(); // clear any lines of console text
@@ -2261,7 +2297,16 @@ void CL_ParseUserMessage( sizebuf_t *msg, int svc_num, connprotocol_t proto )
 	{
 		if( proto == PROTO_GOLDSRC )
 			iSize = MSG_ReadByte( msg );
-		else iSize = MSG_ReadWord( msg );
+		else
+		{
+			iSize = MSG_ReadWord( msg );
+			if( iSize > MAX_USERMSG_LENGTH )
+			{
+				const int swapped = (( iSize & 0xFF ) << 8 ) | (( iSize >> 8 ) & 0xFF );
+				if( swapped >= 0 && swapped <= MAX_USERMSG_LENGTH )
+					iSize = swapped;
+			}
+		}
 	}
 
 	if( iSize >= MAX_USERMSG_LENGTH )

@@ -8,8 +8,9 @@
 #define MBEDTLS_PSA_DRIVER_GET_ENTROPY
 #endif
 
-#if defined( __vita__ ) || defined( __SWITCH__ )
-/* Upstream has no Vita/NSW support; compat.c fills in */
+#if defined( __vita__ ) || defined( __SWITCH__ ) || defined( __APPLE__ )
+/* Upstream has no Vita/NSW support and old Darwin lacks clock_gettime().
+   compat.c fills in mbedtls_ms_time() for these targets. */
 #define MBEDTLS_PLATFORM_MS_TIME_ALT
 #endif
 

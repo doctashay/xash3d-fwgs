@@ -1214,6 +1214,11 @@ void CL_SendGoldSrcConnectPacket( netadr_t adr, int challenge, const void *ticke
 	Con_Printf( "Trying to connect with GoldSrc 48 protocol\n" );
 }
 
+static qboolean CL_IsLocalHostAddress( const char *servername )
+{
+	return !Q_strnicmp( servername, "localhost", 9 ) || !Q_strncmp( servername, "127.0.0.1", 9 );
+}
+
 /*
 =======================
 CL_SendConnectPacket
@@ -1229,7 +1234,12 @@ static void CL_SendConnectPacket( connprotocol_t proto, int challenge )
 
 	protinfo[0] = 0;
 
-	if( !NET_StringToAdr( cls.servername, &adr ))
+	// Local listen server should always use in-process loopback transport.
+	if( SV_Active() && CL_IsLocalHostAddress( cls.servername ) && NET_NetadrType( &cls.serveradr ) == NA_LOOPBACK )
+	{
+		adr = cls.serveradr;
+	}
+	else if( !NET_StringToAdr( cls.servername, &adr ))
 	{
 		Con_Printf( "%s: bad server address\n", __func__ );
 		cls.connect_time = 0;
@@ -1371,14 +1381,26 @@ static void CL_CheckForResend( void )
 	// if the local server is running and we aren't then connect
 	if( cls.state == ca_disconnected && SV_Active( ))
 	{
+		netadr_t local_adr = { 0 };
+
 		cls.signon = 0;
 		cls.state = ca_connecting;
 		Q_strncpy( cls.servername, "localhost", sizeof( cls.servername ));
 		NET_NetadrSetType( &cls.serveradr, NA_LOOPBACK );
 		cls.net_protocol = PROTO_CURRENT;
+		cls.connect_retry = 0;
+		cls.broker_wait = false;
+		cls.bandwidth_test.started = false;
+		cls.bandwidth_test.failed = false;
+		cls.bandwidth_test.passed = false;
 
-		// we don't need a challenge on the localhost
-		CL_SendConnectPacket( PROTO_CURRENT, 0 );
+		local_adr = cls.serveradr;
+		if( local_adr.port == 0 )
+			local_adr.port = MSG_BigShort( PORT_SERVER );
+
+		cls.serveradr = local_adr;
+		cls.connect_time = host.realtime;
+		CL_SendGetChallenge( local_adr );
 		return;
 	}
 
@@ -1400,7 +1422,16 @@ static void CL_CheckForResend( void )
 	if(( host.realtime - cls.connect_time ) < resend_time )
 		return;
 
-	net_gai_state_t res = NET_StringToAdrNB( cls.servername, &adr, false );
+	net_gai_state_t res;
+	if( SV_Active() && CL_IsLocalHostAddress( cls.servername ) && NET_NetadrType( &cls.serveradr ) == NA_LOOPBACK )
+	{
+		adr = cls.serveradr;
+		res = NET_EAI_OK;
+	}
+	else
+	{
+		res = NET_StringToAdrNB( cls.servername, &adr, false );
+	}
 
 	if( res == NET_EAI_NONAME )
 	{
@@ -1590,6 +1621,11 @@ CL_ClearState
 */
 void CL_ClearState( void )
 {
+	// Close voice capture before wiping client state. Map changes (svc_changing)
+	// use this path without CL_Disconnect(); leaving the mic device open until
+	// Voice_Init runs again can deadlock SDL/CoreAudio on shutdown (e.g. macOS PPC).
+	Voice_Disconnect();
+
 	CL_ClearResourceLists();
 
 	for( int i = 0; i < MAX_CLIENTS; i++ )
@@ -2661,6 +2697,7 @@ static void CL_ServerList( netadr_t from, sizebuf_t *msg )
 	{
 		uint8_t addr[16];
 		netadr_t servadr = { 0 };
+		uint16_t port;
 
 		if( NET_NetadrType( &from ) == NA_IP6 ) // IPv6 master server only sends IPv6 addresses
 		{
@@ -2673,11 +2710,11 @@ static void CL_ServerList( netadr_t from, sizebuf_t *msg )
 			MSG_ReadBytes( msg, servadr.ip, sizeof( servadr.ip ), sizeof( servadr.ip ));	// 4 bytes for IP
 			NET_NetadrSetType( &servadr, NA_IP );
 		}
-
-		MSG_ReadBytes( msg, &servadr.port, sizeof( servadr.port ), sizeof( servadr.port ));	// 2 bytes for Port, in network byte order
+		port = (uint16_t)MSG_ReadWord( msg ); // master replies store ports in little-endian wire order
+		servadr.port = htons( port );
 
 		// list is ends here
-		if( !servadr.port )
+		if( !port )
 			break;
 
 		NET_Config( true, false ); // allow remote

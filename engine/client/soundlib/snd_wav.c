@@ -16,6 +16,7 @@ GNU General Public License for more details.
 
 #include <stddef.h>
 #include "soundlib.h"
+#include "xash3d_mathlib.h"
 
 static const byte *iff_data;
 static const byte *iff_dataPtr;
@@ -340,6 +341,16 @@ qboolean Sound_LoadWAV( const char *name, const byte *buffer, fs_offset_t filesi
 				pData++;
 			}
 		}
+	}
+	else if( sound.width == 2 )
+	{
+		// PCM in WAV is little-endian; convert to host-endian on big-endian CPUs.
+		int i;
+		short *pData = (short *)sound.wav;
+		const int totalSamples = sound.samples * sound.channels;
+
+		for( i = 0; i < totalSamples; i++ )
+			pData[i] = LittleShort( pData[i] );
 	}
 
 	// silence known-broken WAVs that contain stray non-zero samples masquerading as silence

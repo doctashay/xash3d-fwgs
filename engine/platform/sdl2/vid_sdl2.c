@@ -54,6 +54,18 @@ qboolean SW_CreateBuffer( int width, int height, uint *stride, uint *bpp, uint *
 	sw.width = width;
 	sw.height = height;
 
+	if( !sw.renderer )
+	{
+		sw.renderer = SDL_CreateRenderer( host.hWnd, -1, SDL_RENDERER_SOFTWARE );
+
+		if( sw.renderer )
+		{
+			SDL_RendererInfo info;
+			SDL_GetRendererInfo( sw.renderer, &info );
+			Con_Printf( "SDL_Renderer %s initialized for software output\n", info.name );
+		}
+	}
+
 	if( sw.renderer )
 	{
 		unsigned int format = SDL_GetWindowPixelFormat( host.hWnd );
@@ -448,6 +460,10 @@ static int VID_GetDisplayIndex( const char *caller, SDL_Window *window )
 
 static void VID_SetWindowIcon( SDL_Window *hWnd )
 {
+#if defined(__APPLE__)
+	(void)hWnd;
+	return;
+#else
 	char iconpath[MAX_STRING];
 
 	Q_strncpy( iconpath, GI->iconpath, sizeof( iconpath ));
@@ -495,6 +511,7 @@ static void VID_SetWindowIcon( SDL_Window *hWnd )
 	}
 
 	WIN_SetWindowIcon( LoadIcon( GetModuleHandle( NULL ), MAKEINTRESOURCE( 101 )));
+#endif
 #endif
 }
 
@@ -761,10 +778,8 @@ cleanup:
 	}
 
 	if( host.hWnd )
-	{
 		SDL_DestroyWindow( host.hWnd );
 		host.hWnd = NULL;
-	}
 
 	return err;
 }
@@ -989,9 +1004,21 @@ Set the described video mode
 */
 qboolean VID_SetMode( void )
 {
+	qboolean reload_gl_extensions = false;
+	convar_t *msaa_cvar;
+	int width, height;
 	rserr_t	err;
-	int width = window_width.value;
-	int height = window_height.value;
+	window_mode_t window_mode;
+
+	// MSAA is applied at GL context creation; resizing the window is not enough.
+	if( host.hWnd && !glw_state.software && ( msaa_cvar = Cvar_FindVar( "gl_msaa_samples" )) != NULL && FBitSet( msaa_cvar->flags, FCVAR_CHANGED ))
+	{
+		R_Free_Video();
+		reload_gl_extensions = true;
+	}
+
+	width = window_width.value;
+	height = window_height.value;
 
 	// get default resolution if values aren't set
 	if( width < VID_MIN_WIDTH || height < VID_MIN_HEIGHT )
@@ -1017,7 +1044,7 @@ qboolean VID_SetMode( void )
 	}
 #endif
 
-	window_mode_t window_mode = bound( 0, vid_fullscreen.value, WINDOW_MODE_COUNT - 1 );
+	window_mode = bound( 0, vid_fullscreen.value, WINDOW_MODE_COUNT - 1 );
 	SetBits( gl_vsync.flags, FCVAR_CHANGED );
 
 	err = R_ChangeDisplaySettings( width, height, window_mode );
@@ -1067,6 +1094,13 @@ qboolean VID_SetMode( void )
 	{
 		sdlState.prev_width = width;
 		sdlState.prev_height = height;
+
+		if( reload_gl_extensions && ref.dllFuncs.GL_InitExtensions )
+			ref.dllFuncs.GL_InitExtensions();
+
+		if(( msaa_cvar = Cvar_FindVar( "gl_msaa_samples" )) != NULL )
+			ClearBits( msaa_cvar->flags, FCVAR_CHANGED );
+
 		return true;
 	}
 

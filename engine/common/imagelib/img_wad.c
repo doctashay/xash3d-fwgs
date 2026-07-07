@@ -259,6 +259,8 @@ qboolean Image_LoadSPR( const char *name, const byte *buffer, fs_offset_t filesi
 	}
 
 	memcpy( &pin, buffer, sizeof( dspriteframe_t ));
+	LittleLongSW( pin.width );
+	LittleLongSW( pin.height );
 	image.width = pin.width;
 	image.height = pin.height;
 

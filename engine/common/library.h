@@ -58,6 +58,8 @@ typedef enum
 } ECommonLibraryType;
 
 void COM_GetCommonLibraryPath( ECommonLibraryType eLibType, char *out, size_t size );
+// Raw path from gameinfo / liblist for this OS (no arch suffix rewrite).
+void COM_GetGameDllPathFromGameInfo( char *out, size_t size );
 
 typedef enum
 {

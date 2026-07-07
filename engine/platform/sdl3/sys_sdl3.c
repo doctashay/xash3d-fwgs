@@ -90,10 +90,8 @@ static void SDLCALL SDLash_LogOutputFunction( void *userdata, int category, SDL_
 	}
 }
 
-void SDLash_Init( const char *basedir )
+void SDLash_Init( void )
 {
-	(void)basedir;
-
 	// TODO: initial state, to be filled from gameinfo!
 	SDL_SetAppMetadata( XASH_ENGINE_NAME, XASH_VERSION, "su.xash.engine" );
 	SDL_SetAppMetadataProperty( SDL_PROP_APP_METADATA_TYPE_STRING, "game" );
@@ -112,6 +110,13 @@ void SDLash_Init( const char *basedir )
 		Sys_Warn( "SDL_Init failed: %s", SDL_GetError( ));
 		host.type = HOST_DEDICATED;
 	}
+#if XASH_APPLE && !XASH_IOS
+	else
+	{
+		Darwin_InitMenuBar();
+		Darwin_AcquirePowerAssertion();
+	}
+#endif
 
 	SDL_SetHint( SDL_HINT_MOUSE_TOUCH_EVENTS, "0" );
 	SDL_SetHint( SDL_HINT_TOUCH_MOUSE_EVENTS, "0" );
@@ -121,6 +126,10 @@ void SDLash_Init( const char *basedir )
 
 void SDLash_Shutdown( void )
 {
+#if XASH_APPLE && !XASH_IOS
+	Darwin_ReleasePowerAssertion();
+	Darwin_ShutdownMenuBar();
+#endif
 	SDLash_FreeCursors();
 	SDL_Quit();
 }

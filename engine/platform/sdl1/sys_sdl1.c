@@ -45,7 +45,7 @@ void Platform_MessageBox( const char *title, const char *message, qboolean paren
 }
 #endif // XASH_MESSAGEBOX == MSGBOX_SDL
 
-void SDLash_Init( const char *basedir )
+void SDLash_Init( void )
 {
 	if( SDL_Init( SDL_INIT_TIMER | SDL_INIT_VIDEO ))
 	{

@@ -16,8 +16,10 @@ GNU General Public License for more details.
 #include "common.h"
 #include "sound.h"
 #include "client.h"
+#include "xash_altivec.h"
 
-static portable_samplepair_t roombuffer[(PAINTBUFFER_SIZE+1)], paintbuffer[(PAINTBUFFER_SIZE+1)];
+static portable_samplepair_t roombuffer[(PAINTBUFFER_SIZE+1)] XASH_ALIGNED16;
+static portable_samplepair_t paintbuffer[(PAINTBUFFER_SIZE+1)] XASH_ALIGNED16;
 
 #define S_MakeMixMono( x ) \
 	static void S_MixMono ## x( portable_samplepair_t *pbuf, const int *volume, const void *buf, int num_samples ) \
@@ -117,6 +119,72 @@ S_MakeMixMonoLerp( 16 )
 S_MakeMixStereoLerp( 8 )
 S_MakeMixStereoLerp( 16 )
 
+#if XASH_ALTIVEC
+static inline void S_MixInt16x8ToBuffer_Altivec( int *dst, __vector signed short samples, __vector signed short volumes )
+{
+	const __vector unsigned int shift = { 8, 8, 8, 8 };
+	__vector signed int even = vec_sra( vec_mule( samples, volumes ), shift );
+	__vector signed int odd = vec_sra( vec_mulo( samples, volumes ), shift );
+	__vector signed int mixed0 = vec_mergeh( even, odd );
+	__vector signed int mixed1 = vec_mergel( even, odd );
+
+	vec_st( vec_add( vec_ld( 0, dst ), mixed0 ), 0, dst );
+	vec_st( vec_add( vec_ld( 16, dst ), mixed1 ), 16, dst );
+}
+
+static void S_MixMono16_Altivec( portable_samplepair_t *pbuf, const int *volume, const void *buf, int num_samples )
+{
+	const int16_t *data = buf;
+	int *dst = (int *)pbuf;
+	const __vector signed short volumes = { volume[0], volume[1], volume[0], volume[1], volume[0], volume[1], volume[0], volume[1] };
+	int i = 0;
+
+	if( !XASH_AltivecAligned16( data ) || !XASH_AltivecAligned16( dst ))
+	{
+		S_MixMono16( pbuf, volume, buf, num_samples );
+		return;
+	}
+
+	for( ; i + 8 <= num_samples; i += 8 )
+	{
+		__vector signed short samples = vec_ld( 0, &data[i] );
+
+		S_MixInt16x8ToBuffer_Altivec( &dst[i * 2 + 0], vec_mergeh( samples, samples ), volumes );
+		S_MixInt16x8ToBuffer_Altivec( &dst[i * 2 + 8], vec_mergel( samples, samples ), volumes );
+	}
+
+	for( ; i < num_samples; i++ )
+	{
+		pbuf[i].left  += ( data[i] * volume[0] ) >> 8;
+		pbuf[i].right += ( data[i] * volume[1] ) >> 8;
+	}
+}
+
+static void S_MixStereo16_Altivec( portable_samplepair_t *pbuf, const int *volume, const void *buf, int num_samples )
+{
+	const int16_t *data = buf;
+	int *dst = (int *)pbuf;
+	const __vector signed short volumes = { volume[0], volume[1], volume[0], volume[1], volume[0], volume[1], volume[0], volume[1] };
+	const int total_samples = num_samples * 2;
+	int i = 0;
+
+	if( !XASH_AltivecAligned16( data ) || !XASH_AltivecAligned16( dst ))
+	{
+		S_MixStereo16( pbuf, volume, buf, num_samples );
+		return;
+	}
+
+	for( ; i + 8 <= total_samples; i += 8 )
+		S_MixInt16x8ToBuffer_Altivec( &dst[i], vec_ld( 0, &data[i] ), volumes );
+
+	for( ; i < total_samples; i += 2 )
+	{
+		pbuf[i / 2].left  += ( data[i + 0] * volume[0] ) >> 8;
+		pbuf[i / 2].right += ( data[i + 1] * volume[1] ) >> 8;
+	}
+}
+#endif
+
 static void S_MixAudio( portable_samplepair_t *pbuf, const int *pvol, const void *buf, int channels, int width, double offset_frac, double rate_scale, int num_samples, qboolean lerp )
 {
 	if( Q_equal( rate_scale, 1.0 ) && Q_equal( offset_frac, 0.0 ))
@@ -125,15 +193,25 @@ static void S_MixAudio( portable_samplepair_t *pbuf, const int *pvol, const void
 		{
 			if( width == 1 )
 				S_MixMono8( pbuf, pvol, buf, num_samples );
+#if XASH_ALTIVEC
+			else
+				S_MixMono16_Altivec( pbuf, pvol, buf, num_samples );
+#else
 			else
 				S_MixMono16( pbuf, pvol, buf, num_samples );
+#endif
 		}
 		else
 		{
 			if( width == 1 )
 				S_MixStereo8( pbuf, pvol, buf, num_samples );
+#if XASH_ALTIVEC
+			else
+				S_MixStereo16_Altivec( pbuf, pvol, buf, num_samples );
+#else
 			else
 				S_MixStereo16( pbuf, pvol, buf, num_samples );
+#endif
 		}
 	}
 	else if( lerp )
@@ -475,11 +553,30 @@ static void S_MixBufferWithGain( portable_samplepair_t *dst, const portable_samp
 {
 	if( gain == 256 )
 	{
+#if XASH_ALTIVEC
+		int *out = (int *)dst;
+		const int *in = (const int *)src;
+		const size_t samples = count * 2;
+		size_t i = 0;
+
+		if( XASH_AltivecAligned16( out ) && XASH_AltivecAligned16( in ))
+		{
+			for( ; i + 4 <= samples; i += 4 )
+				vec_st( vec_add( vec_ld( 0, &out[i] ), vec_ld( 0, &in[i] )), 0, &out[i] );
+		}
+
+		for( ; i < samples; i += 2 )
+		{
+			dst[i / 2].left += src[i / 2].left;
+			dst[i / 2].right += src[i / 2].right;
+		}
+#else
 		for( size_t i = 0; i < count; i++ )
 		{
 			dst[i].left += src[i].left;
 			dst[i].right += src[i].right;
 		}
+#endif
 	}
 	else
 	{
@@ -493,11 +590,31 @@ static void S_MixBufferWithGain( portable_samplepair_t *dst, const portable_samp
 
 static void S_WriteLinearBlastStereo16( short *snd_out, const int *snd_p, size_t count )
 {
+#if XASH_ALTIVEC
+	const __vector signed int minval = { SHRT_MIN + 8, SHRT_MIN + 8, SHRT_MIN + 8, SHRT_MIN + 8 };
+	const __vector signed int maxval = { SHRT_MAX - 8, SHRT_MAX - 8, SHRT_MAX - 8, SHRT_MAX - 8 };
+	size_t i = 0;
+
+	if( XASH_AltivecAligned16( snd_out ) && XASH_AltivecAligned16( snd_p ))
+	{
+		for( ; i + 8 <= count; i += 8 )
+		{
+			__vector signed int a = vec_min( vec_max( vec_ld( 0, &snd_p[i] ), minval ), maxval );
+			__vector signed int b = vec_min( vec_max( vec_ld( 16, &snd_p[i] ), minval ), maxval );
+
+			vec_st( vec_packs( a, b ), 0, &snd_out[i] );
+		}
+	}
+
+	for( ; i < count; i++ )
+		snd_out[i] = CLIP16( snd_p[i] );
+#else
 	for( size_t i = 0; i < count; i += 2 )
 	{
 		snd_out[i+0] = CLIP16( snd_p[i+0] );
 		snd_out[i+1] = CLIP16( snd_p[i+1] );
 	}
+#endif
 }
 
 static void S_TransferPaintBuffer( const portable_samplepair_t *src, int endtime )

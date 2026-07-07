@@ -5,9 +5,29 @@
 from waflib import Logs, TaskGen, Utils
 from waflib.extras import pthread
 import os
+import subprocess
 from copy import copy
 
 top = '.'
+
+
+def run_darwin_engine_test_task(bld, target_name, extra_lib_paths, testdata_root):
+	tg = bld.get_tgen_by_name(target_name)
+	tg.post()
+	binary = tg.link_task.outputs[0].abspath()
+	env = dict(os.environ)
+	dyld_paths = extra_lib_paths[:]
+	if env.get('DYLD_LIBRARY_PATH'):
+		dyld_paths.append(env['DYLD_LIBRARY_PATH'])
+	env['DYLD_LIBRARY_PATH'] = os.pathsep.join(dyld_paths)
+	env['DYLD_FALLBACK_FRAMEWORK_PATH'] = '/Library/Frameworks:/System/Library/Frameworks'
+	env['SDL_VIDEODRIVER'] = 'dummy'
+	env['SDL_AUDIODRIVER'] = 'dummy'
+	env['XASH3D_BASEDIR'] = testdata_root
+	env['XASH3D_GAME'] = 'valve'
+	result = subprocess.run([binary, '-dev', '2', '-runtests'], env=env, cwd=os.path.dirname(binary))
+	if result.returncode != 0:
+		bld.fatal('darwin engine tests failed with exit code %d' % result.returncode)
 
 FFMPEG_CHECK_FRAGMENT='''
 #include <libswresample/swresample.h>
@@ -30,7 +50,10 @@ frameworks = ['Foundation', 'UIKit', 'QuartzCore', 'GameController', 'SystemConf
 
 @TaskGen.extension('.m')
 def m_hook(self, node):
-	return self.create_compiled_task('c', node)
+	task = self.create_compiled_task('c', node)
+	task.env = task.env.derive()
+	task.env.append_value('CFLAGS', ['-fno-lto'])
+	return task
 
 def options(opt):
 	grp = opt.add_option_group('Engine options')
@@ -127,6 +150,9 @@ def configure(conf):
 	if conf.env.IOS:
 		for i in frameworks :
 			conf.check(features='c cprogram', framework=i, uselib_store=i, msg='Checking for %s framework' % i)
+	elif conf.env.DEST_OS == 'darwin':
+		conf.check(features='c cprogram', framework='AppKit', uselib_store='APPKIT', msg='Checking for AppKit framework')
+		conf.check(features='c cprogram', framework='IOKit', uselib_store='IOKIT', msg='Checking for IOKit framework')
 
 	conf.define('ENGINE_DLL', 1)
 
@@ -156,6 +182,15 @@ def configure(conf):
 		refdll.register_define(conf)
 
 def build(bld):
+	testdata_root = None
+	if bld.env.TESTS and Utils.unversioned_sys_platform() == 'darwin':
+		testdata_root = bld.bldnode.make_node('testdata')
+		conchars = testdata_root.make_node('valve/gfx/conchars')
+		os.makedirs(os.path.dirname(conchars.abspath()), exist_ok=True)
+		if not os.path.exists(conchars.abspath()):
+			with open(conchars.abspath(), 'wb') as f:
+				f.write(b'\x00' * 16384)
+
 	# public includes for renderers and utils use
 	bld(name = 'engine_includes', export_includes = '. common common/imagelib', use = 'filesystem_includes')
 
@@ -224,8 +259,7 @@ def build(bld):
 			install_path = bld.env.BINDIR,
 		)
 
-		# the execution stucks on macOS, disable for now
-		if bld.env.TESTS and Utils.unversioned_sys_platform() != 'darwin':
+		if bld.env.TESTS:
 			fs_tg = bld.get_tgen_by_name('filesystem_stdio')
 			fs_tg.post()
 			tg = bld.program(
@@ -240,9 +274,25 @@ def build(bld):
 				ut_str = '${SRC[0].abspath()} -dev 2 -runtests',
 			)
 			tg.ut_paths = fs_tg.link_task.outputs[0].parent.abspath() + os.pathsep
+			if Utils.unversioned_sys_platform() == 'darwin':
+				if not hasattr(tg, 'ut_env'):
+					setattr(tg, 'ut_env', dict(os.environ))
+				old = tg.ut_env.get('DYLD_LIBRARY_PATH')
+				tg.ut_env['DYLD_LIBRARY_PATH'] = tg.ut_paths.rstrip(os.pathsep) + (os.pathsep + old if old else '')
+				tg.ut_env['DYLD_FALLBACK_FRAMEWORK_PATH'] = '/Library/Frameworks:/System/Library/Frameworks'
+				tg.ut_env['SDL_VIDEODRIVER'] = 'dummy'
+				tg.ut_env['SDL_AUDIODRIVER'] = 'dummy'
+				tg.ut_env['XASH3D_BASEDIR'] = testdata_root.abspath()
+				tg.ut_env['XASH3D_RODIR'] = testdata_root.abspath()
+				tg.ut_env['XASH3D_GAME'] = 'valve'
 
 	if bld.env.CLIENT:
 		defines = []
+		if bld.env.DEST_OS == 'darwin' and not bld.env.IOS:
+			source += bld.path.ant_glob('platform/darwin/*.m')
+			includes += bld.path.ant_glob('platform/darwin')
+			libs += ['APPKIT', 'IOKIT']
+
 		if bld.env.XASH_SDL:
 			libs += ['SDL%d' % bld.env.XASH_SDL]
 			source += bld.path.ant_glob(['platform/sdl%d/*.c' % bld.env.XASH_SDL])
@@ -309,14 +359,17 @@ def build(bld):
 			linkflags = linkflags,
 		)
 
-		# the execution stucks on macOS, disable for now
-		if bld.env.TESTS and Utils.unversioned_sys_platform() != 'darwin':
+		if bld.env.TESTS:
 			fs_tg = bld.get_tgen_by_name('filesystem_stdio')
 			fs_tg.post()
+			test_features = 'cxx c test'
+			if Utils.unversioned_sys_platform() == 'darwin':
+				test_features = 'cxx c'
+
 			tg = bld.program(source = source,
 				target = 'xash_tests',
 				includes = includes,
-				features = 'cxx c test',
+				features = test_features,
 				use = libs,
 				defines = defines + ['XASH_ENABLE_MAIN=1', 'XASH_ENGINE_TESTS=1'],
 				install_path = None,
@@ -331,8 +384,11 @@ def build(bld):
 
 			tg.ut_paths = os.pathsep.join(paths) + os.pathsep
 
-			# taken from dyld(1) man-page
 			if Utils.unversioned_sys_platform() == 'darwin':
-				if not hasattr(tg, 'ut_env'):
-					setattr(tg, 'ut_env', dict(os.environ))
-				tg.ut_env['DYLD_FALLBACK_FRAMEWORK_PATH'] = '/Library/Frameworks:/System/Library/Frameworks'
+				extra_paths = [
+					bld.bldnode.make_node('engine').abspath(),
+					fs_tg.link_task.outputs[0].parent.abspath(),
+					bld.bldnode.make_node('ref/gl').abspath(),
+					bld.bldnode.make_node('ref/soft').abspath(),
+				]
+				bld.add_post_fun(lambda bld, extra_paths=extra_paths[:], root=testdata_root.abspath(): run_darwin_engine_test_task(bld, 'xash_tests', extra_paths, root))

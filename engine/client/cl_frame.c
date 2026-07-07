@@ -1216,7 +1216,9 @@ static void CL_LinkPacketEntities( frame_t *frame )
 
 			if( ent->model->type == mod_studio )
 			{
-				if( interpolate && FBitSet( host.features, ENGINE_COMPUTE_STUDIO_LERP ))
+				// Do not combine with ENGINE_STEP_POSHISTORY_LERP (see Host_ValidateEngineFeatures).
+				if( interpolate && FBitSet( host.features, ENGINE_COMPUTE_STUDIO_LERP ) &&
+					!FBitSet( host.features, ENGINE_STEP_POSHISTORY_LERP ))
 					ref.dllFuncs.R_StudioLerpMovement( ent, cl.time, ent->origin, ent->angles );
 			}
 		}

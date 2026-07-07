@@ -233,6 +233,14 @@ void Mod_LoadSpriteModel( model_t *mod, void *buffer, size_t buffersize, qboolea
 	{
 		dsprite_q1_t *pinq1 = buffer;
 
+		LittleLongSW( pinq1->type );
+		pinq1->boundingradius = LittleFloat( pinq1->boundingradius );
+		LittleLongSW( pinq1->bounds[0] );
+		LittleLongSW( pinq1->bounds[1] );
+		LittleLongSW( pinq1->numframes );
+		pinq1->beamlength = LittleFloat( pinq1->beamlength );
+		LittleLongSW( pinq1->synctype );
+
 		if( pinq1->numframes == 0 )
 		{
 			Con_DPrintf( S_ERROR "%s: %s has no frames\n", __func__, mod->name );
@@ -269,6 +277,15 @@ void Mod_LoadSpriteModel( model_t *mod, void *buffer, size_t buffersize, qboolea
 	else // if( version == SPRITE_VERSION_HL )
 	{
 		dsprite_hl_t *pinhl = buffer;
+
+		LittleLongSW( pinhl->type );
+		LittleLongSW( pinhl->texFormat );
+		pinhl->boundingradius = LittleFloat( pinhl->boundingradius );
+		LittleLongSW( pinhl->bounds[0] );
+		LittleLongSW( pinhl->bounds[1] );
+		LittleLongSW( pinhl->numframes );
+		LittleLongSW( pinhl->facetype );
+		LittleLongSW( pinhl->synctype );
 
 		if( pinhl->numframes == 0 )
 		{

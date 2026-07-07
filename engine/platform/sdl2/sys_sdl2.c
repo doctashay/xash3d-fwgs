@@ -88,14 +88,17 @@ static void SDLCALL SDLash_LogOutputFunction( void *userdata, int category, SDL_
 
 void SDLash_Init( void )
 {
-#if XASH_IOS
-	char *path = SDL_GetBasePath();
-	if( path != NULL )
+#if XASH_APPLE
+	if( COM_StringEmptyOrNULL( getenv( "XASH3D_EXTRAS_PAK1" ) ) )
 	{
-		char buf[MAX_VA_STRING];
+		char *path = SDL_GetBasePath();
+		if( path != NULL )
+		{
+			char buf[MAX_VA_STRING];
 
-		Q_snprintf( buf, sizeof( buf ), "%s%s/extras.pk3", path, host.default_gamedir );
-		setenv( "XASH3D_EXTRAS_PAK1", buf, true );
+			Q_snprintf( buf, sizeof( buf ), "%s%s/extras.pk3", path, host.default_gamedir );
+			setenv( "XASH3D_EXTRAS_PAK1", buf, true );
+		}
 	}
 #endif
 

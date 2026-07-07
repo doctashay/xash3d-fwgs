@@ -124,8 +124,12 @@ void SV_ParseConsistencyResponse( sv_client_t *cl, sizebuf_t *msg )
 			byte		resbuffer[32];
 			FORCE_TYPE	ft;
 
-			MSG_ReadBytes( msg, cmins, sizeof( cmins ), sizeof( cmins ));
-			MSG_ReadBytes( msg, cmaxs, sizeof( cmaxs ), sizeof( cmaxs ));
+			cmins[0] = MSG_ReadFloat( msg );
+			cmins[1] = MSG_ReadFloat( msg );
+			cmins[2] = MSG_ReadFloat( msg );
+			cmaxs[0] = MSG_ReadFloat( msg );
+			cmaxs[1] = MSG_ReadFloat( msg );
+			cmaxs[2] = MSG_ReadFloat( msg );
 
 			memcpy( resbuffer, r->rguc_reserved, 32 );
 			ft = resbuffer[0];
@@ -135,6 +139,13 @@ void SV_ParseConsistencyResponse( sv_client_t *cl, sizebuf_t *msg )
 			case force_model_samebounds:
 				memcpy( mins, &resbuffer[0x01], sizeof( mins ));
 				memcpy( maxs, &resbuffer[0x0D], sizeof( maxs ));
+				if( sv_trace_consistency.value )
+				{
+					Con_Printf( "consistency recv %-10s %s client=(%.3f %.3f %.3f)-(%.3f %.3f %.3f) server=(%.3f %.3f %.3f)-(%.3f %.3f %.3f)\n",
+						"samebounds", r->szFileName,
+						cmins[0], cmins[1], cmins[2], cmaxs[0], cmaxs[1], cmaxs[2],
+						mins[0], mins[1], mins[2], maxs[0], maxs[1], maxs[2] );
+				}
 
 				if( !VectorCompare( cmins, mins ) || !VectorCompare( cmaxs, maxs ))
 					badresindex = idx + 1;
@@ -142,6 +153,13 @@ void SV_ParseConsistencyResponse( sv_client_t *cl, sizebuf_t *msg )
 			case force_model_specifybounds:
 				memcpy( mins, &resbuffer[0x01], sizeof( mins ));
 				memcpy( maxs, &resbuffer[0x0D], sizeof( maxs ));
+				if( sv_trace_consistency.value )
+				{
+					Con_Printf( "consistency recv %-10s %s client=(%.3f %.3f %.3f)-(%.3f %.3f %.3f) server=(%.3f %.3f %.3f)-(%.3f %.3f %.3f)\n",
+						"specbounds", r->szFileName,
+						cmins[0], cmins[1], cmins[2], cmaxs[0], cmaxs[1], cmaxs[2],
+						mins[0], mins[1], mins[2], maxs[0], maxs[1], maxs[2] );
+				}
 
 				for( int i = 0; i < 3; i++ )
 				{

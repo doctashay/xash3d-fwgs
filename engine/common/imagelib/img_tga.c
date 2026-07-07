@@ -27,6 +27,17 @@ le_struct_begin( tga_swap )
 	le_struct_field( tga_t, height )
 le_struct_end();
 
+static uint16_t Image_ReadU16LE( const byte *src )
+{
+	return (uint16_t)( src[0] | ( src[1] << 8 ));
+}
+
+static void Image_WriteU16LE( byte *dst, uint16_t value )
+{
+	dst[0] = (byte)( value & 0xFF );
+	dst[1] = (byte)(( value >> 8 ) & 0xFF );
+}
+
 /*
 =============
 Image_LoadTGA

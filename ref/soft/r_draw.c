@@ -136,6 +136,76 @@ static void R_DrawStretchPicImplementation( int x, int y, int w, int h, int s1, 
 	}
 }
 
+static void R_FreeRawTextureData( image_t *tex )
+{
+	int i;
+
+	for( i = 0; i < ARRAYSIZE( tex->pixels ); i++ )
+	{
+		if( tex->pixels[i] )
+		{
+			Mem_Free( tex->pixels[i] );
+			tex->pixels[i] = NULL;
+		}
+	}
+
+	if( tex->alpha_pixels )
+	{
+		Mem_Free( tex->alpha_pixels );
+		tex->alpha_pixels = NULL;
+	}
+
+	tex->numMips = 0;
+	tex->size = 0;
+}
+
+static void R_UploadRawTextureInternal( image_t *tex, int cols, int rows, int width, int height, const byte *data )
+{
+	const byte *source = data;
+	int i;
+
+	if( !tex || !data || cols <= 0 || rows <= 0 )
+		return;
+
+	if( width <= 0 )
+		width = cols;
+	if( height <= 0 )
+		height = rows;
+
+	if( cols != width || rows != height )
+	{
+		source = GL_ResampleTexture( data, cols, rows, width, height, false );
+		cols = width;
+		rows = height;
+	}
+
+	if( !tex->pixels[0] || tex->width != cols || tex->height != rows )
+	{
+		R_FreeRawTextureData( tex );
+		tex->pixels[0] = (pixel_t *)Mem_Calloc( r_temppool, cols * rows * sizeof( pixel_t ));
+		tex->numMips = 1;
+	}
+
+	tex->width = cols;
+	tex->height = rows;
+	tex->srcWidth = cols;
+	tex->srcHeight = rows;
+	tex->depth = 1;
+	tex->size = cols * rows * sizeof( pixel_t );
+
+	for( i = 0; i < cols * rows; i++ )
+	{
+		const unsigned int b = source[i * 4 + 0] * BIT( 5 ) / 256;
+		const unsigned int g = source[i * 4 + 1] * BIT( 6 ) / 256;
+		const unsigned int r = source[i * 4 + 2] * BIT( 5 ) / 256;
+		const unsigned int major = ((( r >> 2 ) & MASK( 3 )) << 5 ) | (((( g >> 3 ) & MASK( 3 )) << 2 )) | ((( b >> 3 ) & MASK( 2 )));
+		const unsigned int minor = MOVE_BIT( r, 1, 5 ) | MOVE_BIT( r, 0, 2 ) | MOVE_BIT( g, 2, 7 ) |
+			MOVE_BIT( g, 1, 4 ) | MOVE_BIT( g, 0, 1 ) | MOVE_BIT( b, 2, 6 ) | MOVE_BIT( b, 1, 3 ) | MOVE_BIT( b, 0, 0 );
+
+		tex->pixels[0][i] = ( major << 8 ) | ( minor & 0xFF );
+	}
+}
+
 
 /*
 =============
@@ -218,6 +288,12 @@ GL_UpdateTexture
 */
 void GAME_EXPORT GL_UpdateTexture( int texnum, int cols, int rows, int width, int height, const byte *buffer, pixformat_t fmt )
 {
+	(void)fmt;
+
+	if( texnum <= 0 || texnum >= MAX_TEXTURES )
+		return;
+
+	R_UploadRawTextureInternal( R_GetTexture( texnum ), cols, rows, width, height, buffer );
 }
 
 /*

@@ -131,8 +131,9 @@ SUBDIRS = [
 	Subproject('3rdparty/MultiEmulator',lambda x: x.env.CLIENT),
 #	Subproject('3rdparty/freevgui',     lambda x: x.env.CLIENT),
 	Subproject('stub/client',           lambda x: x.env.CLIENT),
+	# engine must configure before game_launch: SDL1 + GAME_LAUNCH_NEEDS_SDLMAIN live in env game_launch reads
+	Subproject('engine'),
 	Subproject('game_launch',           lambda x: x.env.LAUNCHER),
-	Subproject('engine'), # keep latest for static linking
 
 	# enabled optionally
 	Subproject('utils/mdldec',            lambda x: x.env.ENABLE_UTILS),
@@ -190,6 +191,9 @@ def options(opt):
 
 	grp.add_option('--disable-werror', action = 'store_true', dest = 'DISABLE_WERROR', default = False,
 		help = 'disable compilation abort on warning')
+
+	grp.add_option('--disable-altivec', action = 'store_false', dest = 'ALTIVEC', default = True,
+		help = 'disable PowerPC AltiVec optimized paths when the compiler supports them [default: %(default)s]')
 
 	grp.add_option('--enable-tests', action = 'store_true', dest = 'TESTS', default = False,
 		help = 'enable building standalone tests (does not enable engine tests!) [default: %(default)s]')
@@ -349,6 +353,28 @@ def configure(conf):
 	conf.env.append_unique('CXXFLAGS', cxxflags)
 	conf.env.append_unique('LINKFLAGS', linkflags)
 
+	if conf.options.ALTIVEC and conf.env.COMPILER_CC != 'msvc' and conf.env.DEST_CPU in ['ppc', 'ppc64', 'powerpc', 'powerpc64']:
+		altivec_fragment = '''
+#include <altivec.h>
+int main(void)
+{
+	__vector signed int v = vec_splat_s32(0);
+	return vec_any_ne(v, v);
+}
+'''
+		altivec_flags = []
+		for flags in [['-maltivec'], ['-faltivec']]:
+			if conf.check_cc(cflags = flags, fragment = altivec_fragment, execute = False,
+					msg = 'Checking for AltiVec support with %s' % ' '.join(flags),
+					mandatory = False):
+				altivec_flags = flags
+				break
+
+		if altivec_flags:
+			conf.env.append_unique('CFLAGS', altivec_flags)
+			conf.env.append_unique('CXXFLAGS', altivec_flags)
+			conf.define('XASH_ALTIVEC', 1)
+
 	if conf.env.COMPILER_CC == 'msvc':
 		opt_cflags = ['/we4013'] # -Werror=implicit-function-declaration
 		conf.env.CFLAGS_werror = conf.filter_cflags(opt_cflags, cflags)
@@ -458,7 +484,11 @@ def configure(conf):
 		elif conf.env.DEST_OS == 'irix':
 			conf.env.DEFAULT_RPATH = '/usr/lib32:/usr/sgug/lib32'
 		elif conf.env.DEST_OS == 'darwin':
-			conf.env.DEFAULT_RPATH = '@loader_path'
+			deployment_target = os.environ.get('MACOSX_DEPLOYMENT_TARGET', '')
+			if deployment_target.startswith('10.4'):
+				conf.env.DEFAULT_RPATH = []
+			else:
+				conf.env.DEFAULT_RPATH = '@loader_path'
 		else:
 			conf.env.DEFAULT_RPATH = '$ORIGIN'
 
@@ -535,27 +565,34 @@ def configure(conf):
 		conf.env.SHAREDIR = conf.env.LIBDIR = conf.env.BINDIR = conf.env.PREFIX
 
 	if not conf.options.BUILD_BUNDLED_DEPS:
+		tiger_target = conf.env.DEST_OS == 'darwin' and os.environ.get('MACOSX_DEPLOYMENT_TARGET', '').startswith('10.4')
+
 		# there was a check for system libbacktrace but we can't be sure if it supports fileline or not
 		# therefore, always build libbacktrace ourselves
 
 		if conf.env.CLIENT:
-			for i in ('ogg','opusfile','vorbis','vorbisfile'):
+			for i in ('ogg','vorbis','vorbisfile'):
 				if conf.check_cfg(package=i, uselib_store=i, args='--cflags --libs', mandatory=False):
 					conf.env['HAVE_SYSTEM_%s' % i.upper()] = True
 
-				if conf.env.HAVE_SYSTEM_OPUSFILE:
-					frag='''#include <opusfile.h>
+			if not tiger_target and conf.check_cfg(package='opusfile', uselib_store='opusfile', args='--cflags --libs', mandatory=False):
+				conf.env.HAVE_SYSTEM_OPUSFILE = True
+
+			if conf.env.HAVE_SYSTEM_OPUSFILE:
+				frag='''#include <opusfile.h>
 int main(int argc, char **argv) { return opus_tagcompare(argv[0], argv[1]); }'''
 
-					conf.env.HAVE_SYSTEM_OPUSFILE = conf.check_cc(msg='Checking for libopusfile sanity', use='opusfile werror', fragment=frag, mandatory=False)
+				conf.env.HAVE_SYSTEM_OPUSFILE = conf.check_cc(msg='Checking for libopusfile sanity', use='opusfile werror', fragment=frag, mandatory=False)
 
-			# search for opus 1.4 only, it has fixes for custom modes
-			# 1.5 breaks custom modes: https://github.com/xiph/opus/issues/374
-			have_opus = conf.check_cfg(package='opus', uselib_store='opus', args=['opus = 1.4', '--cflags', '--libs'], mandatory=False)
+			have_opus = False
+			if not tiger_target:
+				# search for opus 1.4 only, it has fixes for custom modes
+				# 1.5 breaks custom modes: https://github.com/xiph/opus/issues/374
+				have_opus = conf.check_cfg(package='opus', uselib_store='opus', args=['opus = 1.4', '--cflags', '--libs'], mandatory=False)
 
-			# 1.6.1 fixes them again
-			if not have_opus:
-				have_opus = conf.check_cfg(package='opus', uselib_store='opus', args=['opus >= 1.6.1', '--cflags', '--libs'], mandatory=False)
+				# 1.6.1 fixes them again
+				if not have_opus:
+					have_opus = conf.check_cfg(package='opus', uselib_store='opus', args=['opus >= 1.6.1', '--cflags', '--libs'], mandatory=False)
 
 			if have_opus:
 				# now try to link with export that only exists with CUSTOM_MODES defined
@@ -563,6 +600,8 @@ int main(int argc, char **argv) { return opus_tagcompare(argv[0], argv[1]); }'''
 int main(void) { return !opus_custom_encoder_init((OpusCustomEncoder *)1, (const OpusCustomMode *)1, 1); }'''
 
 				conf.env.HAVE_SYSTEM_OPUS = conf.check_cc(msg='Checking if opus supports custom modes', defines='CUSTOM_MODES=1', use='opus werror', fragment=frag, mandatory=False)
+			elif tiger_target:
+				Logs.warn('Tiger target detected: forcing bundled opus and opusfile')
 
 			# search for bzip2
 			BZIP2_CHECK='''#include <bzlib.h>

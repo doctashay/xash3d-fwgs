@@ -55,15 +55,16 @@ typedef enum did3v2_header_flags_e
 #define CHECK_IDENT( ident, b0, b1, b2 )        ((( ident )[0]) == ( b0 ) && (( ident )[1]) == ( b1 ) && (( ident )[2]) == ( b2 ))
 #define CHECK_FRAME_ID( ident, b0, b1, b2, b3 ) ( CHECK_IDENT( ident, b0, b1, b2 ) && (( ident )[3]) == ( b3 ))
 
-static uint32_t Sound_ParseSynchInteger( uint32_t v )
+static uint32_t Sound_ParseSynchInteger( const void *data )
 {
+	const byte *v = (const byte *)data;
 	uint32_t res = 0;
 
-	// read as big endian
-	res |= (( v >> 24 ) & 0x7f ) << 0;
-	res |= (( v >> 16 ) & 0x7f ) << 7;
-	res |= (( v >> 8  ) & 0x7f ) << 14;
-	res |= (( v >> 0  ) & 0x7f ) << 21;
+	// ID3v2 syncsafe integers are stored as byte-ordered big-endian fields.
+	res |= ( v[0] & 0x7f ) << 21;
+	res |= ( v[1] & 0x7f ) << 14;
+	res |= ( v[2] & 0x7f ) << 7;
+	res |= ( v[3] & 0x7f ) << 0;
 
 	return res;
 }
@@ -141,7 +142,7 @@ static qboolean Sound_ParseID3Tag( const byte *buffer, fs_offset_t filesize )
 		return false;
 	}
 
-	tag_length = Sound_ParseSynchInteger( header->length );
+	tag_length = Sound_ParseSynchInteger( &header->length );
 	if( tag_length > filesize - sizeof( *header ))
 	{
 		Con_Printf( S_ERROR "%s: invalid tag length %u, possibly broken file.\n", __func__, tag_length );
@@ -152,7 +153,7 @@ static qboolean Sound_ParseID3Tag( const byte *buffer, fs_offset_t filesize )
 	if( FBitSet( header->flags, ID3V2_HEADER_EXTENDED_HEADER ))
 	{
 		const did3v2_extended_header_t *ext_header = (const did3v2_extended_header_t *)buffer;
-		uint32_t ext_length = Sound_ParseSynchInteger( ext_header->length );
+		uint32_t ext_length = Sound_ParseSynchInteger( &ext_header->length );
 
 		if( ext_length > tag_length )
 		{
@@ -166,7 +167,7 @@ static qboolean Sound_ParseID3Tag( const byte *buffer, fs_offset_t filesize )
 	while( buffer - buffer_begin < tag_length )
 	{
 		const did3v2_frame_t *frame = (const did3v2_frame_t *)buffer;
-		uint32_t frame_length = Sound_ParseSynchInteger( frame->length );
+		uint32_t frame_length = Sound_ParseSynchInteger( &frame->length );
 
 		if( frame_length > tag_length )
 		{

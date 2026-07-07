@@ -230,5 +230,20 @@ int               (*psws_scale)( struct SwsContext *c, const uint8_t *const srcS
 #define psws_scale       sws_scale
 
 #endif // !XASH_FFMPEG_DLOPEN
+
+#if LIBAVCODEC_VERSION_MAJOR >= 59
+#define PAV_CODEC_CHANNELS( ctx ) ((ctx)->ch_layout.nb_channels)
+#define pswr_alloc_set_opts_compat( ps, ctx, out_fmt, out_rate ) \
+	pswr_alloc_set_opts2( (ps), &(ctx)->ch_layout, (out_fmt), (out_rate), &(ctx)->ch_layout, (ctx)->sample_fmt, (ctx)->sample_rate, 0, 0 )
+#else
+#define PAV_CODEC_CHANNELS( ctx ) ((ctx)->channels)
+#define PAV_CODEC_CHANNEL_LAYOUT( ctx ) ((ctx)->channel_layout)
+#define pswr_alloc_set_opts_compat( ps, ctx, out_fmt, out_rate ) \
+	((*(ps) = swr_alloc_set_opts( NULL, \
+		PAV_CODEC_CHANNEL_LAYOUT( ctx ) ? PAV_CODEC_CHANNEL_LAYOUT( ctx ) : av_get_default_channel_layout( PAV_CODEC_CHANNELS( ctx )), \
+		(out_fmt), (out_rate), \
+		PAV_CODEC_CHANNEL_LAYOUT( ctx ) ? PAV_CODEC_CHANNEL_LAYOUT( ctx ) : av_get_default_channel_layout( PAV_CODEC_CHANNELS( ctx )), \
+		(ctx)->sample_fmt, (ctx)->sample_rate, 0, NULL )) ? 0 : AVERROR( ENOMEM ))
+#endif
 #endif // XASH_AVI == AVI_FFMPEG
 #endif // AVI_FFMPEG_H

@@ -31,7 +31,9 @@ static const loadwavfmt_t load_game[] =
 { "wav", Sound_LoadWAV },
 { "mp3", Sound_LoadMPG },
 { "ogg", Sound_LoadOggVorbis },
+#if !XASH_BIG_ENDIAN
 { "opus", Sound_LoadOggOpus },
+#endif
 #else // we only need extensions
 { "wav" },
 { "mp3" },
@@ -54,7 +56,9 @@ static const streamfmt_t stream_game[] =
 { "mp3", Stream_OpenMPG, Stream_ReadMPG, Stream_SetPosMPG, Stream_GetPosMPG, Stream_FreeMPG },
 { "wav", Stream_OpenWAV, Stream_ReadWAV, Stream_SetPosWAV, Stream_GetPosWAV, Stream_FreeWAV },
 { "ogg", Stream_OpenOggVorbis, Stream_ReadOggVorbis, Stream_SetPosOggVorbis, Stream_GetPosOggVorbis, Stream_FreeOggVorbis },
+#if !XASH_BIG_ENDIAN
 { "opus", Stream_OpenOggOpus, Stream_ReadOggOpus, Stream_SetPosOggOpus, Stream_GetPosOggOpus, Stream_FreeOggOpus },
+#endif
 #else // we only need extensions
 { "mp3" },
 { "wav" },

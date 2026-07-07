@@ -251,10 +251,11 @@ qboolean Image_LoadBMP( const char *name, const byte *buffer, fs_offset_t filesi
 				palIndex = alpha >> 4;
 				if( load_qfont )
 				{
+					byte qalpha = Q_max( palette[palIndex][3], Q_max( palette[palIndex][0], Q_max( palette[palIndex][1], palette[palIndex][2] )));
 					*pixbuf++ = red = 255;
 					*pixbuf++ = green = 255;
 					*pixbuf++ = blue = 255;
-					*pixbuf++ = palette[palIndex][2];
+					*pixbuf++ = qalpha;
 				}
 				else
 				{
@@ -267,10 +268,11 @@ qboolean Image_LoadBMP( const char *name, const byte *buffer, fs_offset_t filesi
 				palIndex = alpha & 0x0F;
 				if( load_qfont )
 				{
+					byte qalpha = Q_max( palette[palIndex][3], Q_max( palette[palIndex][0], Q_max( palette[palIndex][1], palette[palIndex][2] )));
 					*pixbuf++ = red = 255;
 					*pixbuf++ = green = 255;
 					*pixbuf++ = blue = 255;
-					*pixbuf++ = palette[palIndex][2];
+					*pixbuf++ = qalpha;
 				}
 				else
 				{

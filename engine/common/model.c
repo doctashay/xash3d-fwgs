@@ -297,6 +297,7 @@ static model_t *Mod_LoadModel( model_t *mod, qboolean crash )
 	char		tempname[MAX_QPATH];
 	fs_offset_t		length = 0;
 	qboolean		loaded, loaded2 = false;
+	uint32_t	rawCRC = 0;
 
 	if( !mod )
 	{
@@ -336,6 +337,16 @@ static model_t *Mod_LoadModel( model_t *mod, qboolean crash )
 	Con_Reportf( "loading %s\n", mod->name );
 	mod->needload = NL_PRESENT;
 	mod->type = mod_bad;
+	model_info_t *p = &mod_crcinfo[mod - mod_known];
+
+	// Keep CRC checks based on the original on-disk bytes. Model loaders may
+	// byte-swap the buffer in-place on big-endian hosts.
+	if( FBitSet( p->flags, FCRC_SHOULD_CHECKSUM ))
+	{
+		CRC32_Init( &rawCRC );
+		CRC32_ProcessBuffer( &rawCRC, buf, length );
+		rawCRC = CRC32_Final( rawCRC );
+	}
 
 	// call the apropriate loader
 	switch( *(uint *)buf )
@@ -401,26 +412,19 @@ static model_t *Mod_LoadModel( model_t *mod, qboolean crash )
 		return NULL;
 	}
 
-	model_info_t *p = &mod_crcinfo[mod - mod_known];
 	mod->needload = NL_PRESENT;
 
 	if( FBitSet( p->flags, FCRC_SHOULD_CHECKSUM ))
 	{
-		uint32_t currentCRC;
-
-		CRC32_Init( &currentCRC );
-		CRC32_ProcessBuffer( &currentCRC, buf, length );
-		currentCRC = CRC32_Final( currentCRC );
-
 		if( FBitSet( p->flags, FCRC_CHECKSUM_DONE ))
 		{
-			if( currentCRC != p->initialCRC )
+			if( rawCRC != p->initialCRC )
 				Host_Error( "%s has a bad checksum\n", tempname );
 		}
 		else
 		{
 			SetBits( p->flags, FCRC_CHECKSUM_DONE );
-			p->initialCRC = currentCRC;
+			p->initialCRC = rawCRC;
 		}
 	}
 	Mem_Free( buf );

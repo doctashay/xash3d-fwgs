@@ -631,15 +631,22 @@ qboolean Sys_NewInstance( const char *gamedir, const char *finalmsg )
 
 		execv( exe, newargs );
 
-		// if execv returned, it's probably an error
-		printf( "execv failed: %s", strerror( errno ));
+		// On older macOS/PPC setups, restarting via resolved executable path can fail.
+		// Try argv[0] as a fallback before giving up.
+		printf( "execv(%s) failed: %s\n", exe, strerror( errno ));
+		if( host.argc > 0 && host.argv[0] && host.argv[0][0] )
+		{
+			execv( host.argv[0], newargs );
+			printf( "execv(%s) failed: %s\n", host.argv[0], strerror( errno ));
+		}
 	}
 #endif
 
 	for( ; i >= 0; i-- )
 		free( newargs[i] );
 	free( newargs );
-	free( exe );
+	if( exe )
+		free( exe );
 #endif
 
 	return false;

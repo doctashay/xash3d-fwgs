@@ -82,6 +82,45 @@ typedef struct
 	float	time;
 } SAVE_LIGHTSTYLE;
 
+static qboolean SaveReadInt( file_t *pFile, int *value, qboolean swap )
+{
+	int	raw;
+
+	if( FS_Read( pFile, &raw, sizeof( raw )) != sizeof( raw ))
+		return false;
+
+	*value = swap ? (int)Swap32((uint32_t)raw ) : raw;
+	return true;
+}
+
+static void SaveWriteInt( file_t *pFile, int value )
+{
+	LittleLongSW( value );
+	FS_Write( pFile, &value, sizeof( value ));
+}
+
+static qboolean SaveDetectHeaderSwap( file_t *pFile, int expected, qboolean *swap )
+{
+	int	raw;
+
+	if( FS_Read( pFile, &raw, sizeof( raw )) != sizeof( raw ))
+		return false;
+
+	if( raw == expected )
+	{
+		*swap = false;
+		return true;
+	}
+
+	if((int)Swap32((uint32_t)raw ) == expected )
+	{
+		*swap = true;
+		return true;
+	}
+
+	return false;
+}
+
 #if XASH_WIN32
 static void (__cdecl *pfnSaveGameComment)( char *buffer, int max_length ) = NULL;
 #else // XASH_WIN32
@@ -652,7 +691,7 @@ static void DirectoryCopy( const char *pPath, file_t *pFile )
 		memset( szName, 0, sizeof( szName )); // clearing the string to prevent garbage in output file
 		Q_strncpy( szName, COM_FileWithoutPath( t->filenames[i] ), sizeof( szName ));
 		FS_Write( pFile, szName, MAX_OSPATH );
-		FS_Write( pFile, &fileSize, sizeof( int ));
+		SaveWriteInt( pFile, fileSize );
 		FS_FileCopy( pFile, pCopy, fileSize );
 		FS_Close( pCopy );
 	}
@@ -666,7 +705,7 @@ DirectoryExtract
 extract the HL1-HL3 files from the .sav file
 =============
 */
-static qboolean DirectoryExtract( file_t *pFile, int fileCount )
+static qboolean DirectoryExtract( file_t *pFile, int fileCount, qboolean swap )
 {
 	for( int i = 0; i < fileCount; i++ )
 	{
@@ -677,7 +716,8 @@ static qboolean DirectoryExtract( file_t *pFile, int fileCount )
 
 		// filename can only be as long as a map name + extension
 		FS_Read( pFile, szName, MAX_OSPATH );
-		FS_Read( pFile, &fileSize, sizeof( int ));
+		if( !SaveReadInt( pFile, &fileSize, swap ))
+			return false;
 		Q_snprintf( fileName, sizeof( fileName ), DEFAULT_SAVE_DIRECTORY "%s", szName );
 		COM_FixSlashes( fileName );
 
@@ -842,32 +882,40 @@ i'm write it just for more readable code
 static int GetClientDataSize( const char *level )
 {
 	int	tokenCount, tokenSize;
-	int	size, id, version;
+	int	size, version;
 	char	name[MAX_QPATH];
 	file_t	*pFile;
+	qboolean	swap = false;
 
 	Q_snprintf( name, sizeof( name ), DEFAULT_SAVE_DIRECTORY "%s.HL2", level );
 
 	if(( pFile = FS_Open( name, "rb", true )) == NULL )
 		return 0;
 
-	FS_Read( pFile, &id, sizeof( id ));
-	if( id != SAVEGAME_HEADER )
+	if( !SaveDetectHeaderSwap( pFile, SAVEGAME_HEADER, &swap ))
 	{
 		FS_Close( pFile );
 		return 0;
 	}
 
-	FS_Read( pFile, &version, sizeof( version ));
+	if( !SaveReadInt( pFile, &version, swap ))
+	{
+		FS_Close( pFile );
+		return 0;
+	}
 	if( version != CLIENT_SAVEGAME_VERSION )
 	{
 		FS_Close( pFile );
 		return 0;
 	}
 
-	FS_Read( pFile, &size, sizeof( int ));
-	FS_Read( pFile, &tokenCount, sizeof( int ));
-	FS_Read( pFile, &tokenSize, sizeof( int ));
+	if( !SaveReadInt( pFile, &size, swap )
+	 || !SaveReadInt( pFile, &tokenCount, swap )
+	 || !SaveReadInt( pFile, &tokenSize, swap ))
+	{
+		FS_Close( pFile );
+		return 0;
+	}
 	FS_Close( pFile );
 
 	return ( size + tokenSize );
@@ -886,11 +934,12 @@ static SAVERESTOREDATA *LoadSaveData( const char *level )
 	int		tokenSize, tableCount;
 	int		size, tokenCount;
 	char		name[MAX_OSPATH];
-	int		id, version;
+	int		version;
 	int		clientSize;
 	SAVERESTOREDATA	*pSaveData;
 	int		totalSize;
 	file_t		*pFile;
+	qboolean	swap = false;
 
 	Q_snprintf( name, sizeof( name ), DEFAULT_SAVE_DIRECTORY "%s.HL1", level );
 	Con_Printf( "Loading game from %s...\n", name );
@@ -902,21 +951,29 @@ static SAVERESTOREDATA *LoadSaveData( const char *level )
 	}
 
 	// Read the header
-	FS_Read( pFile, &id, sizeof( int ));
-	FS_Read( pFile, &version, sizeof( int ));
+	if( !SaveDetectHeaderSwap( pFile, SAVEFILE_HEADER, &swap )
+	 || !SaveReadInt( pFile, &version, swap ))
+	{
+		FS_Close( pFile );
+		return NULL;
+	}
 
 	// is this a valid save?
-	if( id != SAVEFILE_HEADER || version != SAVEGAME_VERSION )
+	if( version != SAVEGAME_VERSION )
 	{
 		FS_Close( pFile );
 		return NULL;
 	}
 
 	// Read the sections info and the data
-	FS_Read( pFile, &size, sizeof( int ));		// total size of all data to initialize read buffer
-	FS_Read( pFile, &tableCount, sizeof( int ));	// entities count to right initialize entity table
-	FS_Read( pFile, &tokenCount, sizeof( int ));	// num hash tokens to prepare token table
-	FS_Read( pFile, &tokenSize, sizeof( int ));	// total size of hash tokens
+	if( !SaveReadInt( pFile, &size, swap )		// total size of all data to initialize read buffer
+	 || !SaveReadInt( pFile, &tableCount, swap )	// entities count to right initialize entity table
+	 || !SaveReadInt( pFile, &tokenCount, swap )	// num hash tokens to prepare token table
+	 || !SaveReadInt( pFile, &tokenSize, swap ))	// total size of hash tokens
+	{
+		FS_Close( pFile );
+		return NULL;
+	}
 
 	// determine highest size of seve-restore buffer
 	// because it's used twice: for HL1 and HL2 restore
@@ -939,7 +996,12 @@ static SAVERESTOREDATA *LoadSaveData( const char *level )
 	pSaveData->time = 0.0f;
 
 	// now reading all the rest of data
-	FS_Read( pFile, pSaveData->pBaseData, size );
+	if( FS_Read( pFile, pSaveData->pBaseData, size ) != size )
+	{
+		FS_Close( pFile );
+		SaveFinish( pSaveData );
+		return NULL;
+	}
 	FS_Close( pFile ); // data is sucessfully moved into SaveRestore buffer (ETABLE will be init later)
 
 	return pSaveData;
@@ -1020,12 +1082,12 @@ static qboolean EntityPatchWrite( SAVERESTOREDATA *pSaveData, const char *level 
 	}
 
 	// patch count
-	FS_Write( pFile, &size, sizeof( int ));
+	SaveWriteInt( pFile, size );
 
 	for( i = 0; i < pSaveData->tableCount; i++ )
 	{
 		if( FBitSet( pSaveData->pTable[i].flags, FENTTABLE_REMOVED ))
-			FS_Write( pFile, &i, sizeof( int ));
+			SaveWriteInt( pFile, i );
 	}
 
 	FS_Close( pFile );
@@ -1044,7 +1106,8 @@ read the list of entities that are no longer in the save file for this level
 static void EntityPatchRead( SAVERESTOREDATA *pSaveData, const char *level )
 {
 	char	name[MAX_QPATH];
-	int	size;
+	int	i, size, entityId;
+	qboolean	swap = false;
 	file_t	*pFile;
 
 	Q_snprintf( name, sizeof( name ), DEFAULT_SAVE_DIRECTORY "%s.HL3", level );
@@ -1053,14 +1116,34 @@ static void EntityPatchRead( SAVERESTOREDATA *pSaveData, const char *level )
 		return;
 
 	// patch count
-	FS_Read( pFile, &size, sizeof( int ));
+	if( !SaveReadInt( pFile, &size, false ))
+	{
+		FS_Close( pFile );
+		return;
+	}
+
+	if( size < 0 || size > pSaveData->tableCount )
+	{
+		int	swapped = LittleLong( size );
+
+		if( swapped >= 0 && swapped <= pSaveData->tableCount )
+		{
+			swap = true;
+			size = swapped;
+		}
+		else
+		{
+			FS_Close( pFile );
+			return;
+		}
+	}
 
 	for( int i = 0; i < size; i++ )
 	{
-		int	entityId;
-
-		FS_Read( pFile, &entityId, sizeof( int ));
-		pSaveData->pTable[entityId].flags = FENTTABLE_REMOVED;
+		if( !SaveReadInt( pFile, &entityId, swap ))
+			break;
+		if( entityId >= 0 && entityId < pSaveData->tableCount )
+			pSaveData->pTable[entityId].flags = FENTTABLE_REMOVED;
 	}
 
 	FS_Close( pFile );
@@ -1200,7 +1283,13 @@ static qboolean SaveClientState( SAVERESTOREDATA *pSaveData, const char *level, 
 
 		if( !changelevel ) // sounds won't going across transition
 		{
+#if XASH_BIG_ENDIAN
+			// Keep restore deterministic on big-endian for transition/load paths.
+			// Dynamic channel snapshots store raw doubles and are fragile across endian assumptions.
+			header.soundCount = 0;
+#else
 			header.soundCount = S_GetCurrentDynamicSounds( soundInfo, MAX_CHANNELS );
+#endif
 
 			// music not reqiured to save position: it's just continue playing on a next level
 			S_StreamGetCurrentState(
@@ -1257,13 +1346,13 @@ static qboolean SaveClientState( SAVERESTOREDATA *pSaveData, const char *level, 
 	int version = CLIENT_SAVEGAME_VERSION;
 	int id = SAVEGAME_HEADER;
 
-	FS_Write( pFile, &id, sizeof( id ));
-	FS_Write( pFile, &version, sizeof( version ));
-	FS_Write( pFile, &pSaveData->size, sizeof( int )); // does not include token table
+	SaveWriteInt( pFile, id );
+	SaveWriteInt( pFile, version );
+	SaveWriteInt( pFile, pSaveData->size ); // does not include token table
 
 	// write out the tokens first so we can load them before we load the entities
-	FS_Write( pFile, &pSaveData->tokenCount, sizeof( int ));
-	FS_Write( pFile, &pSaveData->tokenSize, sizeof( int ));
+	SaveWriteInt( pFile, pSaveData->tokenCount );
+	SaveWriteInt( pFile, pSaveData->tokenSize );
 	FS_Write( pFile, pTokenData, pSaveData->tokenSize );
 	FS_Write( pFile, pSaveData->pBaseData, pSaveData->size ); // header and globals
 	FS_Close( pFile );
@@ -1281,36 +1370,44 @@ read the list of decals and reapply them again
 static void LoadClientState( SAVERESTOREDATA *pSaveData, const char *level, qboolean changelevel, qboolean adjacent )
 {
 	int		tokenCount, tokenSize;
-	int		i, size, id, version;
+	int		i, id, size, version;
 	sv_client_t	*cl = svs.clients;
 	char		name[MAX_QPATH];
 	soundlist_t	soundEntry;
 	decallist_t	decalEntry;
 	SAVE_CLIENT	header;
 	file_t		*pFile;
+	qboolean	swap = false;
 
 	Q_snprintf( name, sizeof( name ), DEFAULT_SAVE_DIRECTORY "%s.HL2", level );
 
 	if(( pFile = FS_Open( name, "rb", true )) == NULL )
 		return; // something bad is happens
 
-	FS_Read( pFile, &id, sizeof( id ));
-	if( id != SAVEGAME_HEADER )
+	if( !SaveDetectHeaderSwap( pFile, SAVEGAME_HEADER, &swap ))
 	{
 		FS_Close( pFile );
 		return;
 	}
 
-	FS_Read( pFile, &version, sizeof( version ));
+	if( !SaveReadInt( pFile, &version, swap ))
+	{
+		FS_Close( pFile );
+		return;
+	}
 	if( version != CLIENT_SAVEGAME_VERSION )
 	{
 		FS_Close( pFile );
 		return;
 	}
 
-	FS_Read( pFile, &size, sizeof( int ));
-	FS_Read( pFile, &tokenCount, sizeof( int ));
-	FS_Read( pFile, &tokenSize, sizeof( int ));
+	if( !SaveReadInt( pFile, &size, swap )
+	 || !SaveReadInt( pFile, &tokenCount, swap )
+	 || !SaveReadInt( pFile, &tokenSize, swap ))
+	{
+		FS_Close( pFile );
+		return;
+	}
 
 	// sanity check
 	ASSERT( pSaveData->bufferSize >= ( size + tokenSize ));
@@ -1323,11 +1420,20 @@ static void LoadClientState( SAVERESTOREDATA *pSaveData, const char *level, qboo
 	// Parse the symbol table
 	BuildHashTable( pSaveData, pFile );
 
-	FS_Read( pFile, pSaveData->pBaseData, size );
+	if( FS_Read( pFile, pSaveData->pBaseData, size ) != size )
+	{
+		FS_Close( pFile );
+		return;
+	}
 	FS_Close( pFile );
 
 	// Read the client header
 	svgame.dllFuncs.pfnSaveReadFields( pSaveData, "ClientHeader", &header, gSaveClient, ARRAYSIZE( gSaveClient ));
+
+	// Guard against corrupted or endian-misread counters to avoid post-load overruns.
+	header.decalCount = bound( 0, header.decalCount, MAX_RENDER_DECALS * 2 );
+	header.entityCount = bound( 0, header.entityCount, MAX_STATIC_ENTITIES );
+	header.soundCount = bound( 0, header.soundCount, MAX_CHANNELS );
 
 	// restore decals
 	for( i = 0; i < header.decalCount; i++ )
@@ -1370,7 +1476,13 @@ static void LoadClientState( SAVERESTOREDATA *pSaveData, const char *level, qboo
 	if( !adjacent )
 	{
 		// restore camera view here
-		edict_t	*pent = pSaveData->pTable[bound( 0, (word)header.viewentity, pSaveData->tableCount )].pent;
+		edict_t	*pent = NULL;
+		int	viewIndex = 0;
+		if( pSaveData->tableCount > 0 )
+		{
+			viewIndex = bound( 0, (int)header.viewentity, pSaveData->tableCount - 1 );
+			pent = pSaveData->pTable[viewIndex].pent;
+		}
 
 		if( !COM_StringEmpty( header.introTrack ))
 		{
@@ -1579,14 +1691,14 @@ static SAVERESTOREDATA *SaveGameState( int changelevel )
 	id = SAVEFILE_HEADER;
 
 	// write the header
-	FS_Write( pFile, &id, sizeof( id ));
-	FS_Write( pFile, &version, sizeof( version ));
+	SaveWriteInt( pFile, id );
+	SaveWriteInt( pFile, version );
 
 	// Write out the tokens and table FIRST so they are loaded in the right order, then write out the rest of the data in the file.
-	FS_Write( pFile, &pSaveData->size, sizeof( int ));	// total size of all data to initialize read buffer
-	FS_Write( pFile, &pSaveData->tableCount, sizeof( int ));	// entities count to right initialize entity table
-	FS_Write( pFile, &pSaveData->tokenCount, sizeof( int ));	// num hash tokens to prepare token table
-	FS_Write( pFile, &pSaveData->tokenSize, sizeof( int ));	// total size of hash tokens
+	SaveWriteInt( pFile, pSaveData->size );	// total size of all data to initialize read buffer
+	SaveWriteInt( pFile, pSaveData->tableCount );	// entities count to right initialize entity table
+	SaveWriteInt( pFile, pSaveData->tokenCount );	// num hash tokens to prepare token table
+	SaveWriteInt( pFile, pSaveData->tokenSize );	// total size of hash tokens
 	FS_Write( pFile, pTokenData, pSaveData->tokenSize );	// write tokens into the file
 	FS_Write( pFile, pTableData, tableSize );		// dump ETABLE structures
 	FS_Write( pFile, pSaveData->pBaseData, dataSize );	// and finally store all the other data
@@ -1743,13 +1855,13 @@ static qboolean SaveGameSlot( const char *pSaveName, const char *pSaveComment )
 	int version = SAVEGAME_VERSION;
 	int id = SAVEGAME_HEADER;
 
-	FS_Write( pFile, &id, sizeof( id ));
-	FS_Write( pFile, &version, sizeof( version ));
-	FS_Write( pFile, &pSaveData->size, sizeof( int )); // does not include token table
+	SaveWriteInt( pFile, id );
+	SaveWriteInt( pFile, version );
+	SaveWriteInt( pFile, pSaveData->size ); // does not include token table
 
 	// write out the tokens first so we can load them before we load the entities
-	FS_Write( pFile, &pSaveData->tokenCount, sizeof( int ));
-	FS_Write( pFile, &pSaveData->tokenSize, sizeof( int ));
+	SaveWriteInt( pFile, pSaveData->tokenCount );
+	SaveWriteInt( pFile, pSaveData->tokenSize );
 	FS_Write( pFile, pTokenData, pSaveData->tokenSize );
 	FS_Write( pFile, pSaveData->pBaseData, pSaveData->size ); // header and globals
 
@@ -1767,29 +1879,36 @@ SaveReadHeader
 read header of .sav file
 =============
 */
-static int SaveReadHeader( file_t *pFile, GAME_HEADER *pHeader )
+static int SaveReadHeader( file_t *pFile, GAME_HEADER *pHeader, qboolean *swap )
 {
 	int		tokenCount, tokenSize;
-	int		size, id, version;
+	int		size, version;
 	SAVERESTOREDATA	*pSaveData;
 
-	FS_Read( pFile, &id, sizeof( id ));
-	if( id != SAVEGAME_HEADER )
+	if( !SaveDetectHeaderSwap( pFile, SAVEGAME_HEADER, swap ))
 	{
 		FS_Close( pFile );
 		return 0;
 	}
 
-	FS_Read( pFile, &version, sizeof( version ));
+	if( !SaveReadInt( pFile, &version, *swap ))
+	{
+		FS_Close( pFile );
+		return 0;
+	}
 	if( version != SAVEGAME_VERSION )
 	{
 		FS_Close( pFile );
 		return 0;
 	}
 
-	FS_Read( pFile, &size, sizeof( int ));
-	FS_Read( pFile, &tokenCount, sizeof( int ));
-	FS_Read( pFile, &tokenSize, sizeof( int ));
+	if( !SaveReadInt( pFile, &size, *swap )
+	 || !SaveReadInt( pFile, &tokenCount, *swap )
+	 || !SaveReadInt( pFile, &tokenSize, *swap ))
+	{
+		FS_Close( pFile );
+		return 0;
+	}
 
 	pSaveData = SaveInit( size + tokenSize, tokenCount );
 	pSaveData->tokenCount = tokenCount;
@@ -1802,7 +1921,12 @@ static int SaveReadHeader( file_t *pFile, GAME_HEADER *pHeader )
 	pSaveData->fUseLandmark = false;
 	pSaveData->time = 0.0f;
 
-	FS_Read( pFile, pSaveData->pBaseData, size );
+	if( FS_Read( pFile, pSaveData->pBaseData, size ) != size )
+	{
+		FS_Close( pFile );
+		SaveFinish( pSaveData );
+		return 0;
+	}
 
 	svgame.dllFuncs.pfnSaveReadFields( pSaveData, "GameHeader", pHeader, gGameHeader, ARRAYSIZE( gGameHeader ));
 
@@ -2114,6 +2238,7 @@ qboolean SV_LoadGame( const char *pPath )
 	GAME_HEADER	gameHeader;
 	file_t		*pFile;
 	uint		flags;
+	qboolean		swap = false;
 
 	if( Host_IsDedicated() )
 		return false;
@@ -2139,8 +2264,8 @@ qboolean SV_LoadGame( const char *pPath )
 	{
 		SV_ClearGameState();
 
-		if( SaveReadHeader( pFile, &gameHeader ))
-			validload = DirectoryExtract( pFile, gameHeader.mapCount );
+		if( SaveReadHeader( pFile, &gameHeader, &swap ))
+			validload = DirectoryExtract( pFile, gameHeader.mapCount, swap );
 
 		FS_Close( pFile );
 
@@ -2292,6 +2417,7 @@ int GAME_EXPORT SV_GetSaveComment( const char *savename, char *comment )
 	char	*pData, *pSaveData, *pFieldName, **pTokenList;
 	string	mapName, description;
 	file_t	*f;
+	qboolean	swap = false;
 
 	if(( f = FS_Open( savename, "rb", true )) == NULL )
 	{
@@ -2300,8 +2426,7 @@ int GAME_EXPORT SV_GetSaveComment( const char *savename, char *comment )
 		return 0;
 	}
 
-	FS_Read( f, &tag, sizeof( int ));
-	if( tag != SAVEGAME_HEADER )
+	if( !SaveDetectHeaderSwap( f, SAVEGAME_HEADER, &swap ))
 	{
 		// invalid header
 		Q_strncpy( comment, "<corrupted>", MAX_STRING );
@@ -2309,7 +2434,12 @@ int GAME_EXPORT SV_GetSaveComment( const char *savename, char *comment )
 		return 0;
 	}
 
-	FS_Read( f, &tag, sizeof( int ));
+	if( !SaveReadInt( f, &tag, swap ))
+	{
+		Q_strncpy( comment, "<corrupted>", MAX_STRING );
+		FS_Close( f );
+		return 0;
+	}
 
 	if( tag == 0x0065 )
 	{
@@ -2336,9 +2466,14 @@ int GAME_EXPORT SV_GetSaveComment( const char *savename, char *comment )
 	mapName[0] = '\0';
 	comment[0] = '\0';
 
-	FS_Read( f, &size, sizeof( int ));
-	FS_Read( f, &tokenCount, sizeof( int ));	// These two ints are the token list
-	FS_Read( f, &tokenSize, sizeof( int ));
+	if( !SaveReadInt( f, &size, swap )
+	 || !SaveReadInt( f, &tokenCount, swap )	// These two ints are the token list
+	 || !SaveReadInt( f, &tokenSize, swap ))
+	{
+		Q_strncpy( comment, "<corrupted>", MAX_STRING );
+		FS_Close( f );
+		return 0;
+	}
 	size += tokenSize;
 
 	// sanity check.
@@ -2375,9 +2510,26 @@ int GAME_EXPORT SV_GetSaveComment( const char *savename, char *comment )
 	else pTokenList = NULL;
 
 	// short, short (size, index of field name)
-	nFieldSize = *(short *)pData;
-	pData += sizeof( short );
-	pFieldName = pTokenList[*(short *)pData];
+	{
+		short rawFieldSize = 0;
+		short rawFieldName = 0;
+
+		memcpy( &rawFieldSize, pData, sizeof( rawFieldSize ));
+		nFieldSize = LittleShort( rawFieldSize );
+		pData += sizeof( short );
+
+		memcpy( &rawFieldName, pData, sizeof( rawFieldName ));
+		rawFieldName = LittleShort( rawFieldName );
+		if( rawFieldName < 0 || rawFieldName >= tokenCount || !pTokenList )
+		{
+			Q_strncpy( comment, "<corrupted hashtable>", MAX_STRING );
+			if( pTokenList ) Mem_Free( pTokenList );
+			if( pSaveData ) Mem_Free( pSaveData );
+			FS_Close( f );
+			return 0;
+		}
+		pFieldName = pTokenList[rawFieldName];
+	}
 
 	if( Q_stricmp( pFieldName, "GameHeader" ))
 	{
@@ -2390,7 +2542,11 @@ int GAME_EXPORT SV_GetSaveComment( const char *savename, char *comment )
 
 	// int (fieldcount)
 	pData += sizeof( short );
-	nNumberOfFields = (int)*pData;
+	{
+		int rawFieldCount = 0;
+		memcpy( &rawFieldCount, pData, sizeof( rawFieldCount ));
+		nNumberOfFields = LittleLong( rawFieldCount );
+	}
 	pData += nFieldSize;
 
 	// each field is a short (size), short (index of name), binary string of "size" bytes (data)
@@ -2401,11 +2557,25 @@ int GAME_EXPORT SV_GetSaveComment( const char *savename, char *comment )
 		// Size
 		// szName
 		// Actual Data
-		nFieldSize = *(short *)pData;
-		pData += sizeof( short );
+		{
+			short rawFieldSize = 0;
+			short rawFieldName = 0;
 
-		pFieldName = pTokenList[*(short *)pData];
-		pData += sizeof( short );
+			memcpy( &rawFieldSize, pData, sizeof( rawFieldSize ));
+			nFieldSize = LittleShort( rawFieldSize );
+			pData += sizeof( short );
+
+			memcpy( &rawFieldName, pData, sizeof( rawFieldName ));
+			rawFieldName = LittleShort( rawFieldName );
+			pData += sizeof( short );
+
+			if( rawFieldName < 0 || rawFieldName >= tokenCount || !pTokenList )
+			{
+				Q_strncpy( comment, "<corrupted hashtable>", MAX_STRING );
+				break;
+			}
+			pFieldName = pTokenList[rawFieldName];
+		}
 
 		size = Q_min( nFieldSize, MAX_STRING );
 

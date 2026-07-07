@@ -69,6 +69,11 @@ static void SDLash_KeyEvent( SDL_KeyboardEvent key )
 		keynum = keynum - (min) + (repl); \
 	}
 
+#if defined(__APPLE__)
+	if( key.keysym.sym >= SDLK_a && key.keysym.sym <= SDLK_z )
+		keynum = key.keysym.sym;
+	else
+#endif
 	DECLARE_KEY_RANGE( SDL_SCANCODE_A, SDL_SCANCODE_Z, 'a' )
 	else DECLARE_KEY_RANGE( SDL_SCANCODE_1, SDL_SCANCODE_9, '1' )
 	else DECLARE_KEY_RANGE( SDL_SCANCODE_F1, SDL_SCANCODE_F12, K_F1 )

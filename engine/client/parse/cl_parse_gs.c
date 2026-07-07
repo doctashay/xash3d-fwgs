@@ -27,7 +27,10 @@ static void CL_ParseExtraInfo( sizebuf_t *msg )
 
 	Q_strncpy( clientfallback, MSG_ReadString( msg ), sizeof( clientfallback ));
 	if( !COM_StringEmpty( clientfallback ))
-		Con_Reportf( S_ERROR "%s: TODO: add fallback directory %s!\n", __func__, clientfallback );
+	{
+		Con_Reportf( "%s: adding fallback directory %s\n", __func__, clientfallback );
+		FS_AddGameHierarchy( clientfallback, FS_NOWRITE_PATH );
+	}
 
 	cls.allow_cheats = MSG_ReadByte( msg ) ? true : false;
 	CL_SetCheatState( cl.maxclients > 1, cls.allow_cheats );

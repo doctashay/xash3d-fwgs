@@ -17,6 +17,7 @@ GNU General Public License for more details.
 #include "xash3d_types.h"
 #include "com_model.h"
 #include "xash3d_mathlib.h"
+#include "xash_altivec.h"
 
 /*
 ========================================================================
@@ -27,9 +28,20 @@ GNU General Public License for more details.
 */
 void Matrix3x4_VectorTransform( const matrix3x4 in, const float v[3], float out[3] )
 {
+#if XASH_ALTIVEC
+	__vector float vin = { v[0], v[1], v[2], 1.0f };
+	__vector float row0 = { in[0][0], in[0][1], in[0][2], in[0][3] };
+	__vector float row1 = { in[1][0], in[1][1], in[1][2], in[1][3] };
+	__vector float row2 = { in[2][0], in[2][1], in[2][2], in[2][3] };
+
+	out[0] = XASH_AltivecDot4( vin, row0 );
+	out[1] = XASH_AltivecDot4( vin, row1 );
+	out[2] = XASH_AltivecDot4( vin, row2 );
+#else
 	out[0] = v[0] * in[0][0] + v[1] * in[0][1] + v[2] * in[0][2] + in[0][3];
 	out[1] = v[0] * in[1][0] + v[1] * in[1][1] + v[2] * in[1][2] + in[1][3];
 	out[2] = v[0] * in[2][0] + v[1] * in[2][1] + v[2] * in[2][2] + in[2][3];
+#endif
 }
 
 void Matrix3x4_VectorITransform( const matrix3x4 in, const float v[3], float out[3] )
@@ -46,9 +58,20 @@ void Matrix3x4_VectorITransform( const matrix3x4 in, const float v[3], float out
 
 void Matrix3x4_VectorRotate( const matrix3x4 in, const float v[3], float out[3] )
 {
+#if XASH_ALTIVEC
+	__vector float vin = { v[0], v[1], v[2], 0.0f };
+	__vector float row0 = { in[0][0], in[0][1], in[0][2], 0.0f };
+	__vector float row1 = { in[1][0], in[1][1], in[1][2], 0.0f };
+	__vector float row2 = { in[2][0], in[2][1], in[2][2], 0.0f };
+
+	out[0] = XASH_AltivecDot4( vin, row0 );
+	out[1] = XASH_AltivecDot4( vin, row1 );
+	out[2] = XASH_AltivecDot4( vin, row2 );
+#else
 	out[0] = v[0] * in[0][0] + v[1] * in[0][1] + v[2] * in[0][2];
 	out[1] = v[0] * in[1][0] + v[1] * in[1][1] + v[2] * in[1][2];
 	out[2] = v[0] * in[2][0] + v[1] * in[2][1] + v[2] * in[2][2];
+#endif
 }
 
 void Matrix3x4_VectorIRotate( const matrix3x4 in, const float v[3], float out[3] )

@@ -1104,6 +1104,25 @@ void GL_InitExtensions( void )
 	Q_snprintf( value, sizeof( value ), "%i", glConfig.max_2d_texture_size );
 	gEngfuncs.Cvar_Get( "gl_max_size", value, 0, "opengl texture max dims" );
 	gEngfuncs.Cvar_SetValue( "gl_anisotropy", bound( 0, gl_texture_anisotropy.value, glConfig.max_texture_anisotropy ));
+#if defined(__APPLE__)
+	if( glConfig.hardware_type == GLHW_RADEON )
+	{
+		// Legacy ATI/AMD Radeon drivers on macOS can become unstable with high anisotropic
+		// filtering during heavy texture / lightmap upload at first map load.
+		if( gl_texture_anisotropy.value > 4.0f )
+		{
+			const float cap = 4.0f;
+			float clamped = bound( 0.0f, cap, glConfig.max_texture_anisotropy );
+			gEngfuncs.Cvar_SetValue( "gl_anisotropy", clamped );
+			gEngfuncs.Con_Reportf( S_NOTE "Video: gl_anisotropy clamped to %.0f for Radeon (Apple)\n", clamped );
+		}
+		// Same drivers often mis-sequence world draws vs uploads (streaks, stalls); mirror Win32 GDI fix.
+		gEngfuncs.Cvar_SetValue( "gl_finish", 1 );
+		gEngfuncs.Con_Reportf( S_NOTE "Video: gl_finish enabled for Radeon (Apple)\n" );
+		gEngfuncs.Cvar_SetValue( "gl_texture_npot", 0 );
+		gEngfuncs.Con_Reportf( S_NOTE "Video: gl_texture_npot disabled for Radeon (Apple)\n" );
+	}
+#endif
 
 	if( GL_Support( GL_TEXTURE_COMPRESSION_EXT ))
 		gEngfuncs.Image_AddCmdFlags( IL_DDS_HARDWARE );
@@ -1207,6 +1226,12 @@ static void R_CheckVBO( void )
 	// VideoCore4 drivers have a problem with mixing VBO and client arrays
 	// Disable it, as there is no suitable workaround here
 	if( Q_stristr( glConfig.renderer_string, "VideoCore IV" ) || Q_stristr( glConfig.renderer_string, "vc4" ) )
+		disable = true;
+#endif
+
+#if defined(__APPLE__)
+	// Apple/ATI GL stacks often mishandle the world VBO path (black streaks, heavy stalls).
+	if( glConfig.hardware_type == GLHW_RADEON )
 		disable = true;
 #endif
 
@@ -1388,6 +1413,16 @@ void GL_SetupAttributes( int safegl )
 	}
 	else
 	{
+#if defined(__APPLE__)
+		// SDL2 + compatibility profile without an explicit GL version often fails the
+		// first context on legacy macOS/ATI ("Failed creating OpenGL context at version
+		// requested"). Omit the profile hint and use the system legacy context.
+		if( safegl )
+		{
+			gEngfuncs.GL_SetAttribute( REF_GL_CONTEXT_MAJOR_VERSION, 1 );
+			gEngfuncs.GL_SetAttribute( REF_GL_CONTEXT_MINOR_VERSION, 1 );
+		}
+#else
 		if( !safegl )
 			gEngfuncs.GL_SetAttribute( REF_GL_CONTEXT_PROFILE_MASK, REF_GL_CONTEXT_PROFILE_COMPATIBILITY );
 		else
@@ -1395,6 +1430,7 @@ void GL_SetupAttributes( int safegl )
 			gEngfuncs.GL_SetAttribute( REF_GL_CONTEXT_MAJOR_VERSION, 1 );
 			gEngfuncs.GL_SetAttribute( REF_GL_CONTEXT_MINOR_VERSION, 1 );
 		}
+#endif
 	}
 #endif // XASH_GLES
 
@@ -1536,6 +1572,13 @@ void GL_OnContextCreated( void )
 	gEngfuncs.GL_GetAttribute( REF_GL_MULTISAMPLESAMPLES, &glConfig.msaasamples );
 	gEngfuncs.GL_GetAttribute( REF_GL_CONTEXT_MAJOR_VERSION, &glConfig.version_major );
 	gEngfuncs.GL_GetAttribute( REF_GL_CONTEXT_MINOR_VERSION, &glConfig.version_minor );
+
+	// SDL / platform may not honor the requested MSAA level; runtime code must use the
+	// real sample count. Otherwise glEnable(GL_MULTISAMPLE*) can run without a MSAA FBO.
+	if( glConfig.msaasamples > 1 )
+		glConfig.max_multisamples = glConfig.msaasamples;
+	else
+		glConfig.max_multisamples = 0;
 
 #if XASH_WES
 	wes_init( "" );

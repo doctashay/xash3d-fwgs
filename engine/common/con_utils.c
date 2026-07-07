@@ -93,8 +93,9 @@ int Cmd_ListMaps( search_t *t, char *lastmapname, size_t len, qboolean silent )
 			dheader_t *header = (dheader_t *)buf;
 			dextrahdr_t *hdrext = (dextrahdr_t *)((byte *)buf + sizeof( dheader_t ));
 
-			ver = header->version;
-			if( hdrext->id == IDEXTRAHEADER ) version = hdrext->version;
+			ver = LittleLong( header->version );
+			if( LittleLong( hdrext->id ) == IDEXTRAHEADER )
+				version = LittleLong( hdrext->version );
 
 			Q_strncpy( entfilename, t->filenames[i], sizeof( entfilename ));
 			COM_ReplaceExtension( entfilename, ".ent", sizeof( entfilename ));

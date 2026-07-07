@@ -2604,8 +2604,6 @@ static void GAME_EXPORT pfnMessageEnd( void )
 {
 	const char	*name = "Unknown";
 	float		*org = NULL;
-	word realsize;
-
 	if( svgame.msg_name ) name = svgame.msg_name;
 	if( !svgame.msg_started ) Host_Error( "%s: called with no active message\n", __func__ );
 	svgame.msg_started = false;
@@ -2655,8 +2653,9 @@ static void GAME_EXPORT pfnMessageEnd( void )
 				return;
 			}
 
-			realsize = LittleShort( svgame.msg_realsize );
-			memcpy( &sv.multicast.pData[svgame.msg_size_index], &realsize, sizeof( realsize ));
+			MSG_SeekToBit( &sv.multicast, svgame.msg_size_index << 3, SEEK_SET );
+			MSG_WriteWord( &sv.multicast, svgame.msg_realsize );
+			MSG_SeekToBit( &sv.multicast, ( svgame.msg_size_index + sizeof( word ) + svgame.msg_realsize ) << 3, SEEK_SET );
 		}
 	}
 	else if( svgame.msg[svgame.msg_index].size != -1 )
@@ -2688,8 +2687,9 @@ static void GAME_EXPORT pfnMessageEnd( void )
 			return;
 		}
 
-		realsize = LittleShort( svgame.msg_realsize );
-		memcpy( &sv.multicast.pData[svgame.msg_size_index], &realsize, sizeof( realsize ));
+		MSG_SeekToBit( &sv.multicast, svgame.msg_size_index << 3, SEEK_SET );
+		MSG_WriteWord( &sv.multicast, svgame.msg_realsize );
+		MSG_SeekToBit( &sv.multicast, ( svgame.msg_size_index + sizeof( word ) + svgame.msg_realsize ) << 3, SEEK_SET );
 	}
 	else
 	{

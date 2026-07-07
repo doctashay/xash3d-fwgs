@@ -183,7 +183,11 @@ char *va( const char *format, ... )
 
 ===============================================================================
 */
+#if XASH_LITTLE_ENDIAN
 #define LZSS_ID		(('S'<<24)|('S'<<16)|('Z'<<8)|('L'))
+#else
+#define LZSS_ID		(('L'<<24)|('Z'<<16)|('S'<<8)|('S'))
+#endif
 #define LZSS_LOOKSHIFT	4
 #define LZSS_WINDOW_SIZE	4096
 #define LZSS_LOOKAHEAD	BIT( LZSS_LOOKSHIFT )

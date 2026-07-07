@@ -42,6 +42,29 @@ GNU General Public License for more details.
 host_parm_t host;	// host parms
 static jmp_buf return_from_main_buf;
 
+static void Host_VerifyRequestedGame( void )
+{
+	string requested_game;
+
+	if( !Sys_GetParmFromCmdLine( "-game", requested_game ))
+		return;
+
+	if( Q_stricmp( requested_game, "cstrike" ) && Q_stricmp( requested_game, "czero" ))
+		return;
+
+	if( GI && !Q_stricmp( GI->gamefolder, requested_game ))
+		return;
+
+	Sys_Error(
+		"Requested -game %s, but loaded gameinfo for %s (basedir %s).\n"
+		"This usually means the app bundle cannot see the expected %s data files.\n"
+		"Check your bundled Resources/Half-Life layout and any writable override data.\n",
+		requested_game,
+		( GI && GI->gamefolder[0] ) ? GI->gamefolder : "<none>",
+		( GI && GI->basedir[0] ) ? GI->basedir : "<none>",
+		requested_game );
+}
+
 /*
 ===============
 Host_ExitInMain
@@ -61,6 +84,38 @@ void Host_ExitInMain( void )
 
 #ifdef XASH_ENGINE_TESTS
 struct tests_stats_s tests_stats;
+
+static void Host_SetTestEnvVar( const char *name, const char *value )
+{
+#if XASH_WIN32
+	_putenv_s( name, value );
+#else
+	setenv( name, value, 1 );
+#endif
+}
+
+static void Host_SetupTestEnvironment( void )
+{
+	char exepath[MAX_SYSPATH];
+	char testdata[MAX_SYSPATH];
+	int exelen, dirlen = 0;
+
+	Host_SetTestEnvVar( "SDL_VIDEODRIVER", "dummy" );
+	Host_SetTestEnvVar( "SDL_AUDIODRIVER", "dummy" );
+
+	exelen = wai_getExecutablePath( exepath, sizeof( exepath ) - 1, &dirlen );
+	if( exelen <= 0 || dirlen <= 0 || dirlen >= (int)sizeof( exepath ))
+		return;
+
+	exepath[exelen] = '\0';
+	exepath[dirlen] = '\0';
+
+	Q_snprintf( testdata, sizeof( testdata ), "%s/../testdata", exepath );
+	COM_FixSlashes( testdata );
+
+	Host_SetTestEnvVar( "XASH3D_BASEDIR", testdata );
+	Host_SetTestEnvVar( "XASH3D_GAME", "valve" );
+}
 #endif
 
 CVAR_DEFINE( host_developer, "developer", "0", FCVAR_FILTERABLE, "engine is in development-mode" );
@@ -286,9 +341,15 @@ void Host_ValidateEngineFeatures( uint32_t mask, uint32_t features )
 	// print requested first
 	Host_PrintFeatures( features, "EXT", engine_features, ARRAYSIZE( engine_features ));
 
-	// now warn about incompatible bits
+	// Mutually exclusive (see enginefeatures.h). Game DLLs often request
+	// ENGINE_COMPUTE_STUDIO_LERP while Counter-Strike also forces
+	// ENGINE_STEP_POSHISTORY_LERP — using both breaks studio entity origins
+	// (double lerp: CL_InterpolateModel then R_StudioLerpMovement).
 	if( FBitSet( features, ENGINE_STEP_POSHISTORY_LERP|ENGINE_COMPUTE_STUDIO_LERP ) == ( ENGINE_STEP_POSHISTORY_LERP|ENGINE_COMPUTE_STUDIO_LERP ))
-		Con_Printf( S_WARN "%s: incompatible ENGINE_STEP_POSHISTORY_LERP and ENGINE_COMPUTE_STUDIO_LERP are enabled!\n", __func__ );
+	{
+		ClearBits( features, ENGINE_COMPUTE_STUDIO_LERP );
+		Con_Printf( S_NOTE "%s: cleared ENGINE_COMPUTE_STUDIO_LERP (incompatible with ENGINE_STEP_POSHISTORY_LERP)\n", __func__ );
+	}
 
 	// finally set global variable
 	host.features = features;
@@ -1047,6 +1108,7 @@ static void Host_InitCommon( int argc, char **argv, const char *progname, qboole
 	{
 		host.allow_console = true;
 		developer = DEV_EXTENDED;
+		Host_SetupTestEnvironment();
 	}
 #endif
 
@@ -1361,6 +1423,10 @@ void Host_ShutdownWithReason( const char *reason )
 		host.status = HOST_SHUTDOWN; // prepare host to normal shutdown
 
 #if !XASH_DEDICATED
+	// Centralize the normal quit path so window-close and other direct
+	// Sys_Quit() callers still notify remote servers before tearing down.
+	CL_Disconnect();
+
 	if( host.type == HOST_NORMAL && !error )
 		Host_WriteConfig();
 #endif
