@@ -133,7 +133,12 @@ Default build-depended cvar and constant values
 */
 
 // Platform overrides
-#if XASH_WIN32
+#if XASH_MACOS9
+	#define DEFAULT_FULLSCREEN   "1"
+	/* DrawSprocket's 640x480 RGB555 mode is the Classic compatibility baseline. */
+	#define DEFAULT_MODE_WIDTH   640
+	#define DEFAULT_MODE_HEIGHT  480
+#elif XASH_WIN32
 	// set up windowed by default on Windows to avoid problems with
 	// Xbox Game Bar
 	#define DEFAULT_FULLSCREEN   "0"

@@ -27,7 +27,10 @@ GNU General Public License for more details.
 	#define OS_LIB_PREFIX "lib"
 #endif
 
-#if XASH_APPLE
+#if XASH_MACOS9
+	#define OS_LIB_EXT    "shlb"
+	#define OPEN_COMMAND  "open"
+#elif XASH_APPLE
 	#include <sys/syslimits.h>
 	#define OS_LIB_EXT    "dylib"
 	#define OPEN_COMMAND  "open"
