@@ -1333,6 +1333,7 @@ void R_Shutdown( void )
 #endif
 
 	Mem_FreePool( &r_temppool );
+	GL_ResetLightmapScratch();
 
 #if XASH_GL4ES
 	close_gl4es();

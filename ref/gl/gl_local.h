@@ -827,6 +827,7 @@ DECLARE_ENGINE_SHARED_CVAR_LIST()
 #include "crtlib.h"
 
 void _Mem_Free( void *data, const char *filename, int fileline );
+void GL_ResetLightmapScratch( void );
 void *_Mem_Alloc( poolhandle_t poolptr, size_t size, qboolean clear, const char *filename, int fileline )
 	ALLOC_CHECK( 2 ) MALLOC_LIKE( _Mem_Free, 1 ) WARN_UNUSED_RESULT;
 

@@ -19,16 +19,17 @@ GNU General Public License for more details.
 
 typedef struct
 {
-	int		allocated[BLOCK_SIZE_MAX];
+	int		*allocated;
 	int		current_lightmap_texture;
 	msurface_t	*dynamic_surfaces;
 	msurface_t	*lightmap_surfaces[MAX_LIGHTMAPS];
-	byte		lightmap_buffer[BLOCK_SIZE_MAX*BLOCK_SIZE_MAX*4];
+	byte		*lightmap_buffer;
+	int		scratch_block_size;
 } gllightmapstate_t;
 
 static vec2_t		world_orthocenter;
 static vec2_t		world_orthohalf;
-static uint		r_blocklights[BLOCK_SIZE_MAX*BLOCK_SIZE_MAX*3];
+static uint		*r_blocklights;
 static mextrasurf_t		*fullbright_surfaces[MAX_TEXTURES];
 static mextrasurf_t		*detail_surfaces[MAX_TEXTURES];
 static int		rtable[MOD_FRAMES][MOD_FRAMES];
@@ -652,7 +653,33 @@ static void R_SetCacheState( msurface_t *surf )
 */
 static void LM_InitBlock( void )
 {
-	memset( gl_lms.allocated, 0, sizeof( gl_lms.allocated ));
+	memset( gl_lms.allocated, 0, BLOCK_SIZE * sizeof( *gl_lms.allocated ));
+}
+
+static void LM_ResizeScratchBuffers( void )
+{
+	size_t pixels;
+
+	if( gl_lms.scratch_block_size == BLOCK_SIZE && gl_lms.allocated &&
+		gl_lms.lightmap_buffer && r_blocklights )
+		return;
+
+	pixels = (size_t)BLOCK_SIZE * BLOCK_SIZE;
+	gl_lms.allocated = Mem_Realloc( r_temppool, gl_lms.allocated,
+		BLOCK_SIZE * sizeof( *gl_lms.allocated ));
+	gl_lms.lightmap_buffer = Mem_Realloc( r_temppool, gl_lms.lightmap_buffer,
+		pixels * 4 * sizeof( *gl_lms.lightmap_buffer ));
+	r_blocklights = Mem_Realloc( r_temppool, r_blocklights,
+		pixels * 3 * sizeof( *r_blocklights ));
+	gl_lms.scratch_block_size = BLOCK_SIZE;
+}
+
+void GL_ResetLightmapScratch( void )
+{
+	gl_lms.allocated = NULL;
+	gl_lms.lightmap_buffer = NULL;
+	gl_lms.scratch_block_size = 0;
+	r_blocklights = NULL;
 }
 
 static int LM_AllocBlock( int w, int h, int *x, int *y )
@@ -662,7 +689,7 @@ static int LM_AllocBlock( int w, int h, int *x, int *y )
 
 	best = BLOCK_SIZE;
 
-	for( i = 0; i < BLOCK_SIZE - w; i++ )
+	for( i = 0; i <= BLOCK_SIZE - w; i++ )
 	{
 		best2 = 0;
 
@@ -701,7 +728,8 @@ static void LM_UploadDynamicBlock( void )
 			height = gl_lms.allocated[i];
 	}
 
-	pglTexSubImage2D( GL_TEXTURE_2D, 0, 0, 0, BLOCK_SIZE, height, GL_RGBA, GL_UNSIGNED_BYTE, gl_lms.lightmap_buffer );
+	if( height > 0 )
+		pglTexSubImage2D( GL_TEXTURE_2D, 0, 0, 0, BLOCK_SIZE, height, GL_RGBA, GL_UNSIGNED_BYTE, gl_lms.lightmap_buffer );
 }
 
 static void LM_UploadBlock( qboolean dynamic )
@@ -3863,6 +3891,7 @@ void GL_RebuildLightmaps( void )
 	// setup all the lightstyles
 	CL_RunLightStyles((lightstyle_t *)ENGINE_GET_PARM( PARM_GET_LIGHTSTYLES_PTR ));
 
+	LM_ResizeScratchBuffers();
 	LM_InitBlock();
 
 	for( i = 0; i < gp_cl->nummodels; i++ )
@@ -3912,6 +3941,8 @@ void GL_BuildLightmaps( void )
 	if( FBitSet( gp_host->features, ENGINE_LARGE_LIGHTMAPS ) || tr.world->version == QBSP2_VERSION || r_large_lightmaps.value )
 		tr.block_size = BLOCK_SIZE_MAX;
 	else tr.block_size = BLOCK_SIZE_DEFAULT;
+
+	LM_ResizeScratchBuffers();
 
 	skychain = NULL;
 
