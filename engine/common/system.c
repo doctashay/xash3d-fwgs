@@ -153,7 +153,7 @@ const char *Sys_GetCurrentUser( void )
 	sceAppUtilSystemParamGetString( SCE_SYSTEM_PARAM_ID_USERNAME, username, sizeof( username ) - 1 );
 	if( !COM_StringEmpty( username ))
 		return username;
-#elif XASH_POSIX && !XASH_ANDROID && !XASH_NSWITCH
+#elif XASH_POSIX && !XASH_ANDROID && !XASH_NSWITCH && !XASH_MACOS9
 	static string username;
 	struct passwd *pw = getpwuid( geteuid( ));
 
@@ -534,7 +534,7 @@ qboolean Sys_CanRestart( void )
 {
 #if XASH_NSWITCH || XASH_PSVITA
 	return true;
-#elif XASH_IOS
+#elif XASH_IOS || XASH_MACOS9
 	return false;
 #else
 	int exelen = wai_getExecutablePath( NULL, 0, NULL );
@@ -559,7 +559,10 @@ qboolean Sys_NewInstance( const char *gamedir, const char *finalmsg )
 	qboolean replaced_arg = false;
 	int i;
 
-#if XASH_NSWITCH
+#if XASH_MACOS9
+	/* Classic has no exec-style process replacement. */
+	return false;
+#elif XASH_NSWITCH
 	char newargs[4096];
 	const char *exe = host.argv[0]; // arg 0 is always the full NRO path
 

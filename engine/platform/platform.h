@@ -51,7 +51,7 @@ void IOS_LaunchDialog( void );
 #undef XASH_PLATFORM_HAVE_STATUS
 #endif
 
-#if XASH_POSIX
+#if XASH_POSIX && !XASH_MACOS9
 void Posix_Daemonize( void );
 void Posix_SetupSigtermHandling( void );
 char *Posix_Input( void );
@@ -111,7 +111,7 @@ void Linux_SetTimer( float time );
 int Linux_GetProcessID( void );
 #endif
 
-#if XASH_APPLE && !XASH_IOS
+#if XASH_APPLE && !XASH_IOS && !XASH_MACOS9
 void Darwin_InitMenuBar( void );
 void Darwin_ShutdownMenuBar( void );
 void Darwin_AcquirePowerAssertion( void );
@@ -125,7 +125,7 @@ static inline void Darwin_ReleasePowerAssertion( void ) {}
 
 static inline void Platform_Init( qboolean con_showalways, const char *basedir )
 {
-#if XASH_POSIX
+#if XASH_POSIX && !XASH_MACOS9
 	// daemonize as early as possible, because we need to close our file descriptors
 	Posix_Daemonize( );
 #endif
@@ -179,7 +179,7 @@ static inline qboolean Sys_DebuggerPresent( void )
 
 static inline void Platform_SetupSigtermHandling( void )
 {
-#if XASH_POSIX
+#if XASH_POSIX && !XASH_MACOS9
 	Posix_SetupSigtermHandling( );
 #endif
 }
@@ -190,6 +190,9 @@ static inline qboolean Platform_NanoSleep( int nsec )
 	SDLash_NanoSleep( nsec );
 	return true;
 	// SDL2 doesn't have nanosleep, so use low-level functions here
+#elif XASH_MACOS9
+	Platform_Sleep(( nsec + 999999 ) / 1000000 );
+	return true;
 #elif XASH_POSIX
 	struct timespec ts = {
 		.tv_sec = 0,
@@ -206,7 +209,7 @@ static inline qboolean Platform_NanoSleep( int nsec )
 #endif
 }
 
-#if XASH_WIN32 || XASH_FREEBSD || XASH_NETBSD || XASH_OPENBSD || XASH_ANDROID || XASH_LINUX || XASH_APPLE
+#if XASH_WIN32 || XASH_FREEBSD || XASH_NETBSD || XASH_OPENBSD || XASH_ANDROID || XASH_LINUX || ( XASH_APPLE && !XASH_MACOS9 )
 void Sys_SetupCrashHandler( const char *argv0 );
 void Sys_RestoreCrashHandler( void );
 #else
@@ -307,7 +310,7 @@ static inline char *Platform_Input( void )
 {
 #if XASH_WIN32
 	return Wcon_Input();
-#elif XASH_POSIX && !XASH_MOBILE_PLATFORM && !XASH_LOW_MEMORY
+#elif XASH_POSIX && !XASH_MACOS9 && !XASH_MOBILE_PLATFORM && !XASH_LOW_MEMORY
 	return Posix_Input();
 #else
 	return NULL;
