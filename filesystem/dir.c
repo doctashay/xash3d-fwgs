@@ -22,7 +22,7 @@ GNU General Public License for more details.
 #include <stddef.h>
 #if XASH_POSIX
 #include <unistd.h>
-#if !XASH_PSVITA
+#if !XASH_PSVITA && !XASH_MACOS9
 #include <sys/ioctl.h>
 #endif
 #endif
@@ -55,7 +55,7 @@ typedef struct dir_s
 
 static qboolean Platform_GetDirectoryCaseSensitivity( const char *dir )
 {
-#if XASH_WIN32 || XASH_PSVITA || XASH_NSWITCH
+#if XASH_WIN32 || XASH_PSVITA || XASH_NSWITCH || XASH_MACOS9
 	return false;
 #elif XASH_ANDROID
 	// on Android, doing code below causes crash in MediaProviderGoogle.apk!libfuse_jni.so

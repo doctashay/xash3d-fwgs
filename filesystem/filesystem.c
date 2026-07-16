@@ -30,7 +30,7 @@ GNU General Public License for more details.
 #include "utflib.h"
 #elif XASH_DOS4GW
 #include <direct.h>
-#else
+#elif !XASH_MACOS9
 #include <dirent.h>
 #endif
 #include <stdio.h>
@@ -60,7 +60,7 @@ GNU General Public License for more details.
 	#define O_TEXT 0
 #endif // !defined( O_TEXT )
 
-#if !XASH_PSVITA && !XASH_NSWITCH
+#if !XASH_PSVITA && !XASH_NSWITCH && !XASH_MACOS9
 	#define HAVE_DUP
 #endif // !XASH_PSVITA && !XASH_NSWITCH
 
@@ -299,6 +299,8 @@ void listdirectory( stringlist_t *list, const char *path, qboolean dirs_only )
 		stringlistappend( list, n_file.name );
 	}
 	_findclose( hFile );
+#elif XASH_MACOS9
+	MacOS9_ListDirectory( list, path, dirs_only );
 #else
 	DIR *dir;
 	struct dirent *entry;
@@ -372,6 +374,8 @@ void FS_CreatePath( char *path )
 			*ofs = 0;
 #if XASH_WIN32
 			_mkdir( path ); // use _wmkdir maybe?
+#elif XASH_MACOS9
+			MacOS9_CreateDirectory( path );
 #else // !XASH_WIN32
 			mkdir( path, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH );
 #endif // !XASH_WIN32
@@ -1950,7 +1954,9 @@ Internal function used to determine filetime
 */
 int FS_SysFileTime( const char *filename )
 {
-#if XASH_WIN32
+#if XASH_MACOS9
+	return MacOS9_FileTime( filename );
+#elif XASH_WIN32
 	struct _stat buf;
 	if( _wstat( FS_PathToWideChar( filename ), &buf ) < 0 )
 #else
@@ -1959,7 +1965,9 @@ int FS_SysFileTime( const char *filename )
 #endif
 		return -1;
 
+#if !XASH_MACOS9
 	return buf.st_mtime;
+#endif
 }
 
 /*
@@ -2037,6 +2045,8 @@ file_t *FS_SysOpen( const char *filepath, const char *mode )
 	{
 #if XASH_WIN32
 		fd = _wopen( FS_PathToWideChar( filepath ), mod | opt, 0666 );
+#elif XASH_MACOS9
+		fd = MacOS9_OpenFile( filepath, mod | opt );
 #else
 		fd = open( filepath, mod|opt, 0666 );
 #endif
@@ -2142,7 +2152,9 @@ Look for a file in the filesystem only
 */
 qboolean FS_SysFileExists( const char *path )
 {
-#if XASH_WIN32
+#if XASH_MACOS9
+	return MacOS9_FileExists( path );
+#elif XASH_WIN32
 	struct _stat buf;
 	if( _wstat( FS_PathToWideChar( path ), &buf ) < 0 )
 #else
@@ -2151,7 +2163,9 @@ qboolean FS_SysFileExists( const char *path )
 #endif
 		return false;
 
+#if !XASH_MACOS9
 	return S_ISREG( buf.st_mode );
+#endif
 }
 
 /*
@@ -2163,7 +2177,9 @@ Look for a existing folder
 */
 qboolean FS_SysFolderExists( const char *path )
 {
-#if XASH_WIN32
+#if XASH_MACOS9
+	return MacOS9_FolderExists( path );
+#elif XASH_WIN32
 	struct _stat buf;
 	if( _wstat( FS_PathToWideChar( path ), &buf ) < 0 )
 #else
@@ -2172,7 +2188,9 @@ qboolean FS_SysFolderExists( const char *path )
 #endif
 		return false;
 
+#if !XASH_MACOS9
 	return S_ISDIR( buf.st_mode );
+#endif
 }
 
 /*
@@ -2184,7 +2202,9 @@ Check if filesystem entry exists at all, don't mind the type
 */
 qboolean FS_SysFileOrFolderExists( const char *path )
 {
-#if XASH_WIN32
+#if XASH_MACOS9
+	return MacOS9_FileOrFolderExists( path );
+#elif XASH_WIN32
 	struct _stat buf;
 	return _wstat( FS_PathToWideChar( path ), &buf ) >= 0;
 #else
@@ -2215,6 +2235,12 @@ int FS_SetCurrentDirectory( const char *path )
 		Q_UTF16ToUTF8( buf, sizeof( buf ), wide_buf, sizeof( wide_buf ) / sizeof( wide_buf[0] ));
 
 		Sys_Error( "Changing directory to %s failed: %s\n", path, buf );
+		return false;
+	}
+#elif XASH_MACOS9
+	if( !MacOS9_SetCurrentDirectory( path ))
+	{
+		Sys_Error( "Changing directory to %s failed\n", path );
 		return false;
 	}
 #elif XASH_POSIX
@@ -2470,7 +2496,10 @@ int FS_Flush( file_t *file )
 	FS_Purge( file );
 
 	// sync
-#if XASH_POSIX
+#if XASH_MACOS9
+	if( !MacOS9_FlushFile( file->handle ))
+		return EOF;
+#elif XASH_POSIX
 	if( fsync( file->handle ) < 0 )
 		return EOF;
 #else
@@ -3313,6 +3342,15 @@ qboolean FS_Rename( const char *oldname, const char *newname )
 	if( !FS_FixFileCase( fs_writepath->dir, newname2, newpath, sizeof( newpath ), true ))
 		return false;
 
+#if XASH_MACOS9
+	ret = MacOS9_RenameFile( oldpath, newpath );
+	if( ret != 0 )
+	{
+		Con_Printf( "%s: failed to rename file %s (%s) to %s (%s): Classic error %d\n",
+			__func__, oldpath, oldname2, newpath, newname2, ret );
+		return false;
+	}
+#else
 	ret = rename( oldpath, newpath );
 	if( ret < 0 )
 	{
@@ -3320,6 +3358,7 @@ qboolean FS_Rename( const char *oldname, const char *newname )
 			__func__, oldpath, oldname2, newpath, newname2, strerror( errno ));
 		return false;
 	}
+#endif
 
 	return true;
 }
@@ -3349,12 +3388,21 @@ qboolean GAME_EXPORT FS_Delete( const char *path )
 	if( !FS_FixFileCase( fs_writepath->dir, path2, real_path, sizeof( real_path ), true ))
 		return true;
 
+#if XASH_MACOS9
+	ret = MacOS9_DeleteFile( real_path );
+	if( ret != 0 )
+	{
+		Con_Printf( "%s: failed to delete file %s (%s): Classic error %d\n", __func__, real_path, path, ret );
+		return false;
+	}
+#else
 	ret = remove( real_path );
 	if( ret < 0 && errno != ENOENT )
 	{
 		Con_Printf( "%s: failed to delete file %s (%s): %s\n", __func__, real_path, path, strerror( errno ));
 		return false;
 	}
+#endif
 
 	return true;
 }

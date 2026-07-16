@@ -204,6 +204,19 @@ void stringlistfreecontents( stringlist_t *list );
 void stringlistappend( stringlist_t *list, const char *text );
 void stringlistsort( stringlist_t *list );
 void listdirectory( stringlist_t *list, const char *path, qboolean dirs_only );
+#if XASH_MACOS9
+void MacOS9_ListDirectory( stringlist_t *list, const char *path, qboolean dirs_only );
+qboolean MacOS9_CreateDirectory( const char *path );
+qboolean MacOS9_SetCurrentDirectory( const char *path );
+qboolean MacOS9_FlushFile( int fd );
+qboolean MacOS9_FileExists( const char *path );
+int MacOS9_FileTime( const char *path );
+qboolean MacOS9_FolderExists( const char *path );
+qboolean MacOS9_FileOrFolderExists( const char *path );
+int MacOS9_OpenFile( const char *path, int flags );
+int MacOS9_DeleteFile( const char *path );
+int MacOS9_RenameFile( const char *oldpath, const char *newpath );
+#endif
 
 // filesystem ops
 int FS_FileExists( const char *filename, int gamedironly );
