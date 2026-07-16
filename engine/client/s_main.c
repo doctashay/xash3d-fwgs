@@ -1489,6 +1489,7 @@ static void S_UpdateChannels( void )
 {
 	uint	endtime;
 	int	samps;
+	float	mixahead = s_mixahead.value;
 
 	SNDDMA_BeginPainting();
 
@@ -1500,7 +1501,13 @@ static void S_UpdateChannels( void )
 	// soundtime - total samples that have been played out to hardware at dmaspeed
 	// paintedtime - total samples that have been mixed at speed
 	// endtime - target for samples in mixahead buffer at speed
-	endtime = soundtime + s_mixahead.value * SOUND_DMA_SPEED;
+#if XASH_MACOS9
+	// Classic Sound Manager keeps consuming audio while long cooperative
+	// render frames prevent the main thread from painting more samples.
+	if( mixahead < 0.25f )
+		mixahead = 0.25f;
+#endif
+	endtime = soundtime + mixahead * SOUND_DMA_SPEED;
 	samps = dma.samples >> 1;
 
 	if((int)(endtime - soundtime) > samps )
