@@ -890,14 +890,18 @@ void CL_ParseServerData( sizebuf_t *msg, connprotocol_t proto )
 	}
 
 	Q_snprintf( mapfile, sizeof( mapfile ), "maps/%s.bsp", clgame.mapname );
-	if( CRC32_MapFile( &cl.worldmapCRC, mapfile, cl.maxclients > 1 ))
 	{
-		// validate map checksum
-		if( cl.worldmapCRC != cl.checksum )
+		dword worldmapCRC;
+		if( CRC32_MapFile( &worldmapCRC, mapfile, cl.maxclients > 1 ))
 		{
-			Con_Printf( S_ERROR "Your map [%s] differs from the server's.\n", clgame.mapname );
-			CL_Disconnect_f(); // for local game, call EndGame
-			Host_AbortCurrentFrame(); // to avoid svc_bad
+			cl.worldmapCRC = worldmapCRC;
+			// validate map checksum
+			if( cl.worldmapCRC != cl.checksum )
+			{
+				Con_Printf( S_ERROR "Your map [%s] differs from the server's.\n", clgame.mapname );
+				CL_Disconnect_f(); // for local game, call EndGame
+				Host_AbortCurrentFrame(); // to avoid svc_bad
+			}
 		}
 	}
 

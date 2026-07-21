@@ -88,15 +88,17 @@ static const uint32_t crc32table[NUM_BYTES] =
 0xb40bbe37, 0xc30c8ea1, 0x5a05df1b, 0x2d02ef8d
 };
 
-void GAME_EXPORT CRC32_ProcessByte( uint32_t *pulCRC, byte ch )
+void GAME_EXPORT CRC32_ProcessByte( void *crc, byte ch )
 {
+	uint32_t *pulCRC = (uint32_t *)crc;
 	uint32_t	ulCrc = *pulCRC;
 
 	*pulCRC = crc32table[((byte)ulCrc ^ ch)] ^ (ulCrc >> 8);
 }
 
-void GAME_EXPORT CRC32_ProcessBuffer( uint32_t *pulCRC, const void *pBuffer, int nBuffer )
+void GAME_EXPORT CRC32_ProcessBuffer( void *crc, const void *pBuffer, int nBuffer )
 {
+	uint32_t *pulCRC = (uint32_t *)crc;
 	uint32_t	ulCrc = *pulCRC, tmp;
 	byte	*pb = (byte *)pBuffer;
 

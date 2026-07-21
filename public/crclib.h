@@ -29,8 +29,9 @@ typedef struct
 #define CRC32_INIT_VALUE 0xFFFFFFFFUL
 #define CRC32_XOR_VALUE  0xFFFFFFFFUL
 
-static inline void CRC32_Init( uint32_t *pulCRC )
+static inline void CRC32_Init( void *crc )
 {
+	uint32_t *pulCRC = (uint32_t *)crc;
 	*pulCRC = CRC32_INIT_VALUE;
 }
 
@@ -40,8 +41,8 @@ static inline uint32_t CRC32_Final( uint32_t pulCRC )
 }
 
 byte CRC32_BlockSequence( byte *base, int length, int sequence );
-void CRC32_ProcessBuffer( uint32_t *pulCRC, const void *pBuffer, int nBuffer );
-void CRC32_ProcessByte( uint32_t *pulCRC, byte ch );
+void CRC32_ProcessBuffer( void *pulCRC, const void *pBuffer, int nBuffer );
+void CRC32_ProcessByte( void *pulCRC, byte ch );
 
 /*
 ==================

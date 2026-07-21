@@ -64,7 +64,7 @@ qboolean SteamBroker_InitiateGameConnection( netadr_t serveradr, int challenge )
 	// sb_connect <ip:port> <server's steam id> <secure> <challenge>
 	// the message calls
 	char buf[512];
-	int len = Q_snprintf( buf, sizeof( buf ), "sb_connect %s %"PRIu64" %s %d", NET_AdrToString( serveradr ), cls.server_steamid, cls.vac2_secure ? "true" : "false", broker.challenge );
+	int len = Q_snprintf( buf, sizeof( buf ), "sb_connect %s %llu %s %d", NET_AdrToString( serveradr ), (unsigned long long)cls.server_steamid, cls.vac2_secure ? "true" : "false", broker.challenge );
 
 	NET_SendPacket( NS_CLIENT, len, buf, broker.adr );
 
@@ -175,7 +175,7 @@ void SteamBroker_HandlePacket( netadr_t from, sizebuf_t *msg )
 
 	MSG_ReadBytes( msg, ticket, len );
 
-	Con_Printf( "%s: SteamID: %"PRIu64", ticket: [%d, %d, %d, %d...]\n", __func__, *(uint64_t *)cls.steamid, ticket[0], ticket[1], ticket[2], ticket[3] );
+	Con_Printf( "%s: SteamID: %llu, ticket: [%d, %d, %d, %d...]\n", __func__, (unsigned long long)*(uint64_t *)cls.steamid, ticket[0], ticket[1], ticket[2], ticket[3] );
 
 	CL_SendGoldSrcConnectPacket( broker.serveradr, challenge, ticket, len );
 
