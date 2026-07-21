@@ -23,6 +23,8 @@ GNU General Public License for more details.
 // window management
 void VID_RestoreScreenResolution( window_mode_t window_mode );
 void VID_SaveWindowSize( int width, int height );
+qboolean VID_IgnoreQuitEvent( void );
+void VID_FinishedEventPump( void );
 
 //
 // in_sdl.c

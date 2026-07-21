@@ -1170,6 +1170,73 @@ void R_RenderFrame( const ref_viewpass_t *rvp )
 R_EndFrame
 ===============
 */
+static int R_NextPowerOfTwo( int value )
+{
+	int result = 1;
+	while( result < value )
+		result <<= 1;
+	return result;
+}
+
+static void R_ScaleDisplayFrame( void )
+{
+	const int width = gpGlobals->width;
+	const int height = gpGlobals->height;
+	const int outputWidth = (int)( width * tr.displayScaleX + 0.5f );
+	const int outputHeight = (int)( height * tr.displayScaleY + 0.5f );
+	const int textureWidth = R_NextPowerOfTwo( width );
+	const int textureHeight = R_NextPowerOfTwo( height );
+	const float maxS = (float)width / textureWidth;
+	const float maxT = (float)height / textureHeight;
+
+	if( tr.displayTextureWidth != textureWidth || tr.displayTextureHeight != textureHeight )
+	{
+		if( tr.displayTexture )
+			pglDeleteTextures( 1, &tr.displayTexture );
+
+		pglGenTextures( 1, &tr.displayTexture );
+		pglBindTexture( GL_TEXTURE_2D, tr.displayTexture );
+		pglTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST );
+		pglTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST );
+		pglTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP );
+		pglTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP );
+		pglTexImage2D( GL_TEXTURE_2D, 0, GL_RGB, textureWidth, textureHeight,
+			0, GL_RGB, GL_UNSIGNED_BYTE, NULL );
+		tr.displayTextureWidth = textureWidth;
+		tr.displayTextureHeight = textureHeight;
+	}
+	else
+	{
+		pglBindTexture( GL_TEXTURE_2D, tr.displayTexture );
+	}
+
+	// Copy before drawing: the source and scaled destination share the back buffer.
+	pglCopyTexSubImage2D( GL_TEXTURE_2D, 0, 0, 0, 0, 0, width, height );
+
+	pglViewport( 0, 0, outputWidth, outputHeight );
+	pglMatrixMode( GL_PROJECTION );
+	pglLoadIdentity();
+	pglOrtho( 0, 1, 0, 1, -1, 1 );
+	pglMatrixMode( GL_MODELVIEW );
+	pglLoadIdentity();
+	pglDisable( GL_DEPTH_TEST );
+	pglDisable( GL_ALPHA_TEST );
+	pglDisable( GL_BLEND );
+	pglDisable( GL_CULL_FACE );
+	pglEnable( GL_TEXTURE_2D );
+	pglColor4f( 1, 1, 1, 1 );
+	pglBegin( GL_QUADS );
+	pglTexCoord2f( 0, 0 );       pglVertex2f( 0, 0 );
+	pglTexCoord2f( maxS, 0 );    pglVertex2f( 1, 0 );
+	pglTexCoord2f( maxS, maxT ); pglVertex2f( 1, 1 );
+	pglTexCoord2f( 0, maxT );    pglVertex2f( 0, 1 );
+	pglEnd();
+
+	// Keep the renderer's texture cache in sync for the next frame.
+	glState.currentTextures[0] = tr.displayTexture;
+	GL_Bind( 0, tr.defaultTexture );
+}
+
 void R_EndFrame( void )
 {
 #if XASH_PSVITA
@@ -1180,6 +1247,8 @@ void R_EndFrame( void )
 #endif
 	// flush any remaining 2D bits
 	R_Set2DMode( false );
+	if( tr.displayScaleX > 1.0f || tr.displayScaleY > 1.0f )
+		R_ScaleDisplayFrame();
 	gEngfuncs.GL_SwapBuffers();
 }
 

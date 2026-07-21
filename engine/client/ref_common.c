@@ -467,7 +467,7 @@ static const ref_api_t gEngfuncs =
 	R_GetWindowHandle,
 };
 
-static void R_UnloadProgs( void )
+static void R_UnloadProgs( qboolean preserve_video_cvars )
 {
 	if( !ref.hInstance ) return;
 
@@ -477,7 +477,10 @@ static void R_UnloadProgs( void )
 
 	Cvar_FullSet( "host_refloaded", "0", FCVAR_READ_ONLY );
 
-	Cvar_Unlink( FCVAR_RENDERINFO | FCVAR_GLCONFIG | FCVAR_REFDLL );
+	if( preserve_video_cvars )
+		Cvar_Unlink( FCVAR_REFDLL );
+	else
+		Cvar_Unlink( FCVAR_RENDERINFO | FCVAR_GLCONFIG | FCVAR_REFDLL );
 	Cmd_Unlink( CMD_REFDLL );
 
 	COM_FreeLibrary( ref.hInstance );
@@ -516,7 +519,7 @@ static qboolean R_LoadProgs( const char *name )
 	static ref_api_t gpEngfuncs;
 	REFAPI GetRefAPI; // single export
 
-	if( ref.hInstance ) R_UnloadProgs();
+	if( ref.hInstance ) R_UnloadProgs( false );
 
 	FS_AllowDirectPaths( true );
 	if( !( ref.hInstance = COM_LoadLibrary( name, false, true )))
@@ -560,7 +563,7 @@ static qboolean R_LoadProgs( const char *name )
 	return true;
 }
 
-void R_Shutdown( void )
+static void R_ShutdownInternal( qboolean preserve_video_cvars )
 {
 	int i;
 	model_t *mod;
@@ -576,8 +579,13 @@ void R_Shutdown( void )
 	// correctly free all models before render unload
 	// change this if need add online render changing
 	Mod_FreeAll();
-	R_UnloadProgs();
+	R_UnloadProgs( preserve_video_cvars );
 	ref.initialized = false;
+}
+
+void R_Shutdown( void )
+{
+	R_ShutdownInternal( false );
 }
 
 static void R_GetRendererName( char *dest, size_t size, const char *opt )
@@ -605,7 +613,7 @@ static void R_GetRendererName( char *dest, size_t size, const char *opt )
 	}
 }
 
-static qboolean R_LoadRenderer( const char *refopt, qboolean quiet )
+static qboolean R_LoadRenderer( const char *refopt, qboolean quiet, qboolean preserve_video_cvars )
 {
 	string refdll;
 
@@ -615,7 +623,7 @@ static qboolean R_LoadRenderer( const char *refopt, qboolean quiet )
 
 	if( !R_LoadProgs( refdll ))
 	{
-		R_Shutdown();
+		R_ShutdownInternal( preserve_video_cvars );
 		if( !quiet )
 			Sys_Warn( S_ERROR "Can't initialize %s renderer!\n", refdll );
 		return false;
@@ -765,7 +773,7 @@ qboolean R_Init( void )
 	requested_cvar[0] = 0;
 
 	if( Sys_GetParmFromCmdLine( "-ref", requested_cmdline ))
-		success = R_LoadRenderer( requested_cmdline, false );
+		success = R_LoadRenderer( requested_cmdline, false, false );
 
 	if( !success && !COM_StringEmptyOrNULL( r_refdll.string ) && Q_stricmp( requested_cmdline, r_refdll.string ))
 	{
@@ -774,7 +782,7 @@ qboolean R_Init( void )
 		// do not show scary messages to user if renderer set in config cannot be loaded
 		// as game data could be copied from one platform to another, where this renderer
 		// might not be supported (ref_gl on Android for example)
-		success = R_LoadRenderer( requested_cvar, !host_developer.value );
+		success = R_LoadRenderer( requested_cvar, !host_developer.value, false );
 	}
 
 	if( !success )
@@ -795,7 +803,7 @@ qboolean R_Init( void )
 			if( !Q_strcmp( "soft", ref.short_names[i] ) && !host_developer.value )
 				Sys_Warn( "Can't initialize any hardware accelerated renderer. Falling back to software rendering...\n" );
 
-			success = R_LoadRenderer( ref.short_names[i], !host_developer.value );
+			success = R_LoadRenderer( ref.short_names[i], !host_developer.value, false );
 
 			if( success )
 			{
@@ -814,5 +822,45 @@ qboolean R_Init( void )
 
 	SCR_Init();
 
+	return true;
+}
+
+qboolean R_ChangeRenderer( void )
+{
+	string requested, previous;
+
+	Q_strncpy( requested, Cvar_VariableString( "r_refdll" ), sizeof( requested ));
+	Q_strncpy( previous, Cvar_VariableString( "r_refdll_loaded" ), sizeof( previous ));
+
+	if( !requested[0] || !Q_stricmp( requested, previous ))
+		return true;
+
+	Con_Printf( "Changing renderer from %s to %s\n", previous, requested );
+	SV_Shutdown( "Renderer changed\n" );
+	CL_Disconnect();
+	CL_ClearEdicts();
+	UI_SetActiveMenu( false );
+	UI_UnloadProgs();
+	R_ShutdownInternal( true );
+
+	if( !R_LoadRenderer( requested, false, true ))
+	{
+		Con_Printf( S_ERROR "Unable to load %s; restoring %s\n", requested, previous );
+		Cvar_Set( "r_refdll", previous );
+
+		if( !R_LoadRenderer( previous, false, true ))
+			Sys_Error( "Unable to restore renderer %s\n", previous );
+	}
+
+	if( !UI_LoadProgs( ))
+	{
+		Con_Printf( S_ERROR "can't initialize gameui DLL: %s\n", COM_GetLibraryError() );
+		host.allow_console = true;
+	}
+
+	SCR_VidInit();
+	UI_SetActiveMenu( true );
+	host.renderinfo_changed = false;
+	Host_AbortCurrentFrame();
 	return true;
 }

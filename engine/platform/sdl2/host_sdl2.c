@@ -301,6 +301,8 @@ static void SDLash_EventHandler( SDL_Event *event )
 		break;
 
 	case SDL_QUIT:
+		if( VID_IgnoreQuitEvent( ))
+			break;
 		Sys_Quit( "caught SDL_QUIT" );
 		break;
 	case SDL_MOUSEWHEEL:
@@ -436,6 +438,8 @@ void Platform_RunEvents( void )
 
 	while( host.status != HOST_CRASHED && !host.shutdown_issued && SDL_PollEvent( &event ) )
 		SDLash_EventHandler( &event );
+
+	VID_FinishedEventPump();
 
 #if XASH_PSVITA
 	PSVita_InputUpdate();

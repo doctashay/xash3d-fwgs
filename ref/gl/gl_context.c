@@ -377,10 +377,15 @@ static qboolean R_SetDisplayTransform( ref_screen_rotation_t rotate, int offset_
 		ret = false;
 	}
 
-	if( scale_x != 1.0f || scale_y != 1.0f )
+	if( scale_x < 1.0f || scale_y < 1.0f || scale_x != scale_y )
 	{
-		gEngfuncs.Con_Printf("scale transform not supported\n");
+		gEngfuncs.Con_Printf("non-uniform or fractional-upscale transform not supported\n");
 		ret = false;
+	}
+	else
+	{
+		tr.displayScaleX = scale_x;
+		tr.displayScaleY = scale_y;
 	}
 
 	return ret;

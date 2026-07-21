@@ -59,6 +59,7 @@ extern convar_t r_adjust_fov;
 extern convar_t gl_clear;
 
 qboolean R_Init( void );
+qboolean R_ChangeRenderer( void );
 void R_Shutdown( void );
 
 #endif // REF_COMMON_H

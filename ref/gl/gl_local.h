@@ -264,6 +264,9 @@ typedef struct
 	uint max_entities;
 
 	ref_screen_rotation_t rotation;
+	float displayScaleX, displayScaleY;
+	GLuint displayTexture;
+	int displayTextureWidth, displayTextureHeight;
 } gl_globals_t;
 
 typedef struct

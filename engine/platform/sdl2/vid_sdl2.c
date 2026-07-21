@@ -32,7 +32,19 @@ static void GL_SetupAttributes( void );
 static struct
 {
 	int prev_width, prev_height;
+	qboolean replacing_window;
+	qboolean ignore_replacement_quit;
 } sdlState = { 640, 480 };
+
+qboolean VID_IgnoreQuitEvent( void )
+{
+	return sdlState.ignore_replacement_quit;
+}
+
+void VID_FinishedEventPump( void )
+{
+	sdlState.ignore_replacement_quit = false;
+}
 
 struct
 {
@@ -53,6 +65,12 @@ qboolean SW_CreateBuffer( int width, int height, uint *stride, uint *bpp, uint *
 {
 	sw.width = width;
 	sw.height = height;
+
+	if( sw.surf )
+	{
+		SDL_FreeSurface( sw.surf );
+		sw.surf = NULL;
+	}
 
 	if( !sw.renderer )
 	{
@@ -113,13 +131,16 @@ qboolean SW_CreateBuffer( int width, int height, uint *stride, uint *bpp, uint *
 			if( !SDL_LockTexture( sw.tex, NULL, &pixels, &pitch ))
 			{
 				int bits;
-				uint amask;
+				Uint32 rmask, gmask, bmask, amask;
 
 				// lock successfull, release
 				SDL_UnlockTexture( sw.tex );
 
 				// enough for building blitter tables
-				SDL_PixelFormatEnumToMasks( format, &bits, r, g, b, &amask );
+				SDL_PixelFormatEnumToMasks( format, &bits, &rmask, &gmask, &bmask, &amask );
+				*r = rmask;
+				*g = gmask;
+				*b = bmask;
 				*bpp = SDL_BYTESPERPIXEL( format );
 				*stride = pitch / *bpp;
 
@@ -146,11 +167,28 @@ qboolean SW_CreateBuffer( int width, int height, uint *stride, uint *bpp, uint *
 			return false;
 		}
 
-		*bpp = sw.win->format->BytesPerPixel;
-		*r = sw.win->format->Rmask;
-		*g = sw.win->format->Gmask;
-		*b = sw.win->format->Bmask;
-		*stride = sw.win->pitch / sw.win->format->BytesPerPixel;
+		if( width != sw.win->w || height != sw.win->h )
+		{
+			sw.surf = SDL_CreateRGBSurface( 0, width, height,
+				sw.win->format->BitsPerPixel, sw.win->format->Rmask,
+				sw.win->format->Gmask, sw.win->format->Bmask,
+				sw.win->format->Amask );
+
+			if( !sw.surf )
+			{
+				Sys_Warn( "failed to create scaled software buffer: %s", SDL_GetError() );
+				return false;
+			}
+		}
+
+		{
+			SDL_Surface *draw = sw.surf ? sw.surf : sw.win;
+			*bpp = draw->format->BytesPerPixel;
+			*r = draw->format->Rmask;
+			*g = draw->format->Gmask;
+			*b = draw->format->Bmask;
+			*stride = draw->pitch / draw->format->BytesPerPixel;
+		}
 
 		/// TODO: check somehow if ref_soft can handle native format
 #if 0
@@ -179,7 +217,7 @@ void *SW_LockBuffer( void )
 		return pixels;
 	}
 
-	// ensure it not changed (do we really need this?)
+	// A fullscreen transition can replace the native window framebuffer.
 	sw.win = SDL_GetWindowSurface( host.hWnd );
 	//if( !sw.win )
 		//SDL_GetWindowSurface( host.hWnd );
@@ -230,9 +268,18 @@ void SW_UnlockBuffer( void )
 		src.x = src.y = 0;
 		src.w = sw.width;
 		src.h = sw.height;
-		dst = src;
 		SDL_UnlockSurface( sw.surf );
-		SDL_BlitSurface( sw.surf, &src, sw.win, &dst );
+
+		// The software renderer draws fewer pixels; SDL expands that finished frame.
+		sw.win = SDL_GetWindowSurface( host.hWnd );
+		if( !sw.win )
+			return;
+
+		dst.x = dst.y = 0;
+		dst.w = sw.win->w;
+		dst.h = sw.win->h;
+		SDL_BlitScaled( sw.surf, &src, sw.win, &dst );
+		SDL_UpdateWindowSurface( host.hWnd );
 		return;
 	}
 
@@ -713,6 +760,7 @@ static rserr_t VID_CreateWindow( const int input_width, const int input_height, 
 		err = VID_SetScreenResolution( input_width, input_height, window_mode, WINDOW_MODE_WINDOWED );
 		if( err != rserr_ok )
 			goto cleanup;
+
 	}
 
 	VID_SetWindowIcon( host.hWnd );
@@ -781,6 +829,12 @@ cleanup:
 		sw.renderer = NULL;
 	}
 
+	if( sw.surf )
+	{
+		SDL_FreeSurface( sw.surf );
+		sw.surf = NULL;
+	}
+
 	if( host.hWnd )
 		SDL_DestroyWindow( host.hWnd );
 		host.hWnd = NULL;
@@ -796,6 +850,13 @@ VID_DestroyWindow
 static void VID_DestroyWindow( void )
 {
 	GL_DeleteContext();
+	sdlState.replacing_window = host.hWnd != NULL;
+
+	if( sw.surf )
+	{
+		SDL_FreeSurface( sw.surf );
+		sw.surf = NULL;
+	}
 
 	VID_RestoreScreenResolution( (window_mode_t)vid_fullscreen.value );
 
@@ -943,6 +1004,8 @@ qboolean R_Init_Video( ref_graphic_apis_t type )
 		glw_state.software = true;
 		break;
 	case REF_GL:
+		glw_state.software = false;
+
 		if( !glw_state.safe && Sys_GetParmFromCmdLine( "-safegl", safe ) )
 			glw_state.safe = bound( SAFE_NO, Q_atoi( safe ), SAFE_DONTCARE );
 
@@ -962,6 +1025,13 @@ qboolean R_Init_Video( ref_graphic_apis_t type )
 
 	if( !VID_SetMode( ))
 		return false;
+
+	if( sdlState.replacing_window )
+	{
+		// Some SDL video backends report the destroyed window's quit after replacement.
+		sdlState.ignore_replacement_quit = true;
+		sdlState.replacing_window = false;
+	}
 
 	switch( type )
 	{

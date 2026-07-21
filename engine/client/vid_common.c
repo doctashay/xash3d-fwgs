@@ -110,6 +110,12 @@ check vid modes and fullscreen
 */
 void VID_CheckChanges( void )
 {
+	if( Q_stricmp( Cvar_VariableString( "r_refdll" ), Cvar_VariableString( "r_refdll_loaded" )))
+	{
+		R_ChangeRenderer();
+		return;
+	}
+
 	if( FBitSet( cl_allow_levelshots.flags, FCVAR_CHANGED ))
 	{
 		//GL_FreeTexture( cls.loadingBar );

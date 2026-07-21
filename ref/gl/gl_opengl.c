@@ -1327,6 +1327,12 @@ void R_Shutdown( void )
 		return;
 
 	GL_RemoveCommands();
+	if( tr.displayTexture )
+	{
+		pglDeleteTextures( 1, &tr.displayTexture );
+		tr.displayTexture = 0;
+		tr.displayTextureWidth = tr.displayTextureHeight = 0;
+	}
 	R_ShutdownImages();
 #if !XASH_GLES && !XASH_GL_STATIC
 	GL2_ShimShutdown();

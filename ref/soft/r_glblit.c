@@ -33,10 +33,9 @@ qboolean R_SetDisplayTransform( ref_screen_rotation_t rotate, int offset_x, int 
 		ret = false;
 	}
 
-	if( scale_x != 1.0f || scale_y != 1.0f )
+	if( scale_x < 1.0f || scale_y < 1.0f || scale_x != scale_y )
 	{
-		// maybe implement 2x2?
-		gEngfuncs.Con_Printf( "scale transform not supported\n" );
+		gEngfuncs.Con_Printf( "non-uniform or fractional-upscale transform not supported\n" );
 		ret = false;
 	}
 
@@ -826,4 +825,3 @@ qboolean GAME_EXPORT VID_ScreenShot( const char *filename, int shot_type )
 
 	return result;
 }
-
