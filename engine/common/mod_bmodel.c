@@ -2750,7 +2750,7 @@ static void Mod_LoadTextureData( model_t *mod, dbspmodel_t *bmod, int textureInd
 		const size_t size = Mod_CalculateMipTexSize( &mipTex, usesCustomPalette );
 
 		Q_snprintf( texName, sizeof( texName ), "#%s:%s.mip", loadstat.name, mipTex.name );
-		Image_SetForceFlags( texture_force_flags | IL_HOST_ENDIAN );
+		Image_SetForceFlags( texture_force_flags );
 		texture->gl_texturenum = ref.dllFuncs.GL_LoadTexture( texName, mipRaw, size, txFlags );
 	}
 
@@ -2783,7 +2783,7 @@ static void Mod_LoadTextureData( model_t *mod, dbspmodel_t *bmod, int textureInd
 
 		Q_snprintf( texName, sizeof( texName ), "#%s:%s_luma.mip", loadstat.name, mipTex.name );
 
-		Image_SetForceFlags( texture_force_flags | IL_HOST_ENDIAN );
+		Image_SetForceFlags( texture_force_flags );
 
 		if( LittleLong( mipTex.offsets[0] ) > 0 )
 		{

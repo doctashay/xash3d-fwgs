@@ -54,6 +54,25 @@ static size_t g_num_gamepads;
 
 #define CALIBRATION_TIME 10.0f
 
+static SDL_GameController *SDLash_GameControllerFromInstanceID( SDL_JoystickID id )
+{
+#if SDL_VERSION_ATLEAST( 2, 0, 4 )
+	return SDL_GameControllerFromInstanceID( id );
+#else
+	size_t i;
+
+	for( i = 0; i < g_num_gamepads; i++ )
+	{
+		SDL_Joystick *joy = SDL_GameControllerGetJoystick( g_gamepads[i] );
+
+		if( joy && SDL_JoystickInstanceID( joy ) == id )
+			return g_gamepads[i];
+	}
+
+	return NULL;
+#endif
+}
+
 static struct
 {
 	float  time;
@@ -140,7 +159,7 @@ static void SDLash_SetActiveGameController( SDL_JoystickID id )
 	{
 		qboolean have_gyro = false;
 
-		g_current_gamepad = SDL_GameControllerFromInstanceID( id );
+		g_current_gamepad = SDLash_GameControllerFromInstanceID( id );
 
 #if SDL_VERSION_ATLEAST( 2, 0, 14 )
 		have_gyro = SDL_GameControllerHasSensor( g_current_gamepad, SDL_SENSOR_GYRO );

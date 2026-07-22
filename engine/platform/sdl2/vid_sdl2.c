@@ -567,7 +567,11 @@ static void VID_SetWindowIcon( SDL_Window *hWnd )
 
 static qboolean VID_GetDisplayBounds( int display_index, SDL_Window *hWnd, SDL_Rect *rect )
 {
+#if SDL_VERSION_ATLEAST( 2, 0, 5 )
 	if( SDL_GetDisplayUsableBounds( display_index, rect ) != 0 )
+#else
+	if( SDL_GetDisplayBounds( display_index, rect ) != 0 )
+#endif
 	{
 		memset( rect, 0, sizeof( *rect ));
 		return false;
@@ -576,7 +580,9 @@ static qboolean VID_GetDisplayBounds( int display_index, SDL_Window *hWnd, SDL_R
 	wrect_t wrc = { 0 };
 	if( hWnd )
 	{
+#if SDL_VERSION_ATLEAST( 2, 0, 5 )
 		SDL_GetWindowBordersSize( hWnd, &wrc.top, &wrc.left, &wrc.bottom, &wrc.right );
+#endif
 	}
 	else
 	{
@@ -652,7 +658,9 @@ static rserr_t VID_SetScreenResolution( int width, int height, window_mode_t win
 			return rserr_unknown;
 		}
 
+#if SDL_VERSION_ATLEAST( 2, 0, 5 )
 		SDL_SetWindowResizable( host.hWnd, SDL_TRUE );
+#endif
 		SDL_SetWindowBordered( host.hWnd, SDL_TRUE );
 
 		if( !FBitSet( SDL_GetWindowFlags( host.hWnd ), SDL_WINDOW_MAXIMIZED ))
@@ -990,11 +998,17 @@ qboolean R_Init_Video( ref_graphic_apis_t type )
 		SDL_SetHint( SDL_HINT_OPENGL_ES_DRIVER, "1" );
 #endif // XASH_WIN32
 
+#ifdef SDL_HINT_VIDEO_X11_FORCE_EGL
 		SDL_SetHint( SDL_HINT_VIDEO_X11_FORCE_EGL, "1" );
+#endif
 	}
 
+#ifdef SDL_HINT_QTWAYLAND_WINDOW_FLAGS
 	SDL_SetHint( SDL_HINT_QTWAYLAND_WINDOW_FLAGS, "OverridesSystemGestures" );
+#endif
+#ifdef SDL_HINT_QTWAYLAND_CONTENT_ORIENTATION
 	SDL_SetHint( SDL_HINT_QTWAYLAND_CONTENT_ORIENTATION, "landscape" );
+#endif
 	SDL_SetHint( SDL_HINT_VIDEO_X11_XRANDR, "1" );
 	SDL_SetHint( SDL_HINT_VIDEO_X11_XVIDMODE, "1" );
 

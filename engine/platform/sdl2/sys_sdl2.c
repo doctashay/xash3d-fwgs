@@ -116,8 +116,12 @@ void SDLash_Init( const char *basedir )
 	// SDL_SetHint( SDL_HINT_WINDOWS_DPI_SCALING, "1" );
 #endif // XASH_WIN32
 
+#ifdef SDL_HINT_ANDROID_BLOCK_ON_PAUSE
 	SDL_SetHint( SDL_HINT_ANDROID_BLOCK_ON_PAUSE, "0" );
+#endif
+#ifdef SDL_HINT_ANDROID_BLOCK_ON_PAUSE_PAUSEAUDIO
 	SDL_SetHint( SDL_HINT_ANDROID_BLOCK_ON_PAUSE_PAUSEAUDIO, "0" );
+#endif
 
 	if( SDL_Init( SDL_INIT_TIMER | SDL_INIT_VIDEO | SDL_INIT_EVENTS ) )
 	{
@@ -126,14 +130,20 @@ void SDLash_Init( const char *basedir )
 	}
 
 	SDL_SetHint( SDL_HINT_ACCELEROMETER_AS_JOYSTICK, "0" );
+#ifdef SDL_HINT_JOYSTICK_HIDAPI_STEAM
 	SDL_SetHint( SDL_HINT_JOYSTICK_HIDAPI_STEAM, "1" );
+#endif
+#ifdef SDL_HINT_ANDROID_TRAP_BACK_BUTTON
 	SDL_SetHint( SDL_HINT_ANDROID_TRAP_BACK_BUTTON, "1" );
+#endif
 	SDL_SetHint( SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight" );
 
 #ifdef SDL_HINT_MOUSE_TOUCH_EVENTS
 	SDL_SetHint( SDL_HINT_MOUSE_TOUCH_EVENTS, "0" );
 #endif // SDL_HINT_MOUSE_TOUCH_EVENTS
+#ifdef SDL_HINT_TOUCH_MOUSE_EVENTS
 	SDL_SetHint( SDL_HINT_TOUCH_MOUSE_EVENTS, "0" );
+#endif // SDL_HINT_TOUCH_MOUSE_EVENTS
 
 	// NOTE: setting this hint makes no sense, as of course
 	// it doesn't make warps magically work in normal, non-relative mode
