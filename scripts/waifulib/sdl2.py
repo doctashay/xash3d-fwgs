@@ -52,10 +52,20 @@ def sdl2_configure_path(conf, path, libname):
 
 	conf.env[HAVE] = 1
 	if conf.env.DEST_OS == 'darwin':
-		conf.env[INCLUDES] = [os.path.abspath(os.path.join(path, 'Headers'))]
-		conf.env[FRAMEWORKPATH] = [my_dirname(path)]
-		conf.env[FRAMEWORK] = [libname]
-		conf.end_msg('yes: {0}, {1}, {2}'.format(conf.env[FRAMEWORK], conf.env[FRAMEWORKPATH], conf.env[INCLUDES]))
+		framework_headers = os.path.abspath(os.path.join(path, 'Headers'))
+		prefix_include = os.path.abspath(os.path.join(path, 'include'))
+		prefix_include_sdl = os.path.abspath(os.path.join(path, 'include/%s' % libname))
+		prefix_lib = os.path.abspath(os.path.join(path, 'lib'))
+		if os.path.isdir(framework_headers):
+			conf.env[INCLUDES] = [framework_headers]
+			conf.env[FRAMEWORKPATH] = [my_dirname(path)]
+			conf.env[FRAMEWORK] = [libname]
+			conf.end_msg('yes: {0}, {1}, {2}'.format(conf.env[FRAMEWORK], conf.env[FRAMEWORKPATH], conf.env[INCLUDES]))
+		else:
+			conf.env[INCLUDES] = [prefix_include, prefix_include_sdl]
+			conf.env[LIBPATH] = [prefix_lib]
+			conf.env[LIB] = [libname]
+			conf.end_msg('yes: {0}, {1}, {2}'.format(conf.env[LIB], conf.env[LIBPATH], conf.env[INCLUDES]))
 	elif conf.env.DEST_OS == 'android':
 		# Special setup for waf called from CMake, through ExternalProject_Add
 		conf.env[INCLUDES] = [os.path.abspath(os.path.join(path, 'include'))]
